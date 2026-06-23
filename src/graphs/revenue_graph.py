@@ -64,8 +64,8 @@ def link_campaign_to_conversion(
     execute_cypher(f"""
         SELECT * FROM cypher('{GRAPH}', $$
             MATCH (camp:Campaign {{id: '{campaign_id}'}}), (conv:Conversion {{id: '{conversion_id}'}})
-            MERGE (camp)-[r:GENERATED {{model: '{model}'}}]->(conv)
-            SET r.credit = {credit}, r.revenue_credit = {revenue_credit}
+            MERGE (camp)-[r:GENERATED]->(conv)
+            SET r.model = '{model}', r.credit = {credit}, r.revenue_credit = {revenue_credit}
             RETURN camp, r, conv
         $$) AS (camp agtype, r agtype, conv agtype)
     """)
@@ -75,7 +75,8 @@ def query_revenue_by_channel(model: str = "linear", limit: int = 10) -> list[dic
     """Retorna receita total atribuída por canal para um modelo de atribuição."""
     rows = execute_cypher(f"""
         SELECT * FROM cypher('{GRAPH}', $$
-            MATCH (camp:Campaign)-[r:GENERATED {{model: '{model}'}}]->(conv:Conversion)
+            MATCH (camp:Campaign)-[r:GENERATED]->(conv:Conversion)
+            WHERE r.model = '{model}'
             RETURN
                 camp.channel         AS channel,
                 count(conv)          AS conversions,
@@ -87,8 +88,8 @@ def query_revenue_by_channel(model: str = "linear", limit: int = 10) -> list[dic
     return [
         {
             "channel": str(r["channel"]).strip('"'),
-            "conversions": int(str(r["conversions"])),
-            "total_revenue": float(str(r["total_revenue"])),
+            "conversions": int(str(r["conversions"] or 0)),
+            "total_revenue": float(str(r["total_revenue"] or 0)),
         }
         for r in rows
     ]
