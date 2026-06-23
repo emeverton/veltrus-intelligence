@@ -1,4 +1,5 @@
 import asyncio
+import json
 import uuid
 from typing import Optional
 
@@ -71,7 +72,7 @@ async def ingest_creative(
             "description": payload.description,
             "external_id": payload.external_id,
             "qdrant_id": qdrant_id,
-            "metadata": payload.metadata or {},
+            "metadata": json.dumps(payload.metadata or {}),
         },
     )
     await session.commit()
