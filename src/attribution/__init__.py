@@ -1,1 +1,1 @@
-"""Attribution Engine layer — Briefing #2 (Shapley + PyMC + Meridian)."""
+"""Attribution Engine — touchpoints, conversions, Shapley via NATS."""
