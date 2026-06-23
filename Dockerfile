@@ -1,13 +1,15 @@
 FROM python:3.12-slim AS builder
 WORKDIR /build
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc g++ make \
+    gcc g++ make wget \
     && rm -rf /var/lib/apt/lists/*
 COPY requirements.txt .
-RUN pip install --no-cache-dir --user -r requirements.txt && \
-    python -c "from huggingface_hub import hf_hub_download; \
-    hf_hub_download('hexgrad/Kokoro-82M', 'kokoro-v0_19.onnx', local_dir='/kokoro'); \
-    hf_hub_download('hexgrad/Kokoro-82M', 'voices.bin', local_dir='/kokoro')"
+RUN pip install --no-cache-dir --user -r requirements.txt
+RUN mkdir -p /kokoro && \
+    wget -q -O /kokoro/kokoro-v0_19.onnx \
+      https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files/kokoro-v0_19.onnx && \
+    wget -q -O /kokoro/voices.bin \
+      https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files/voices.bin
 
 FROM python:3.12-slim
 WORKDIR /app

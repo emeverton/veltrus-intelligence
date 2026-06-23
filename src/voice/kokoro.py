@@ -10,6 +10,8 @@ from functools import lru_cache
 
 logger = logging.getLogger(__name__)
 
+_VOICE_ALIASES = {"af": "af_bella", "am": "am_adam"}
+
 
 @lru_cache(maxsize=1)
 def _get_kokoro():
@@ -37,7 +39,8 @@ def synthesize_sync(text: str, voice: str = "af", speed: float = 1.0) -> bytes:
     if model is None:
         raise RuntimeError("Kokoro model not available")
 
-    samples, sample_rate = model.create(text, voice=voice, speed=speed, lang="en-us")
+    voice_id = _VOICE_ALIASES.get(voice, voice)
+    samples, sample_rate = model.create(text, voice=voice_id, speed=speed, lang="en-us")
 
     import soundfile as sf
 
