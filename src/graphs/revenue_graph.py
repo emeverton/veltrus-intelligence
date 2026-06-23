@@ -13,8 +13,7 @@ def upsert_identity_node(profile_id: str, is_known: bool = False) -> None:
     execute_cypher(f"""
         SELECT * FROM cypher('{GRAPH}', $$
             MERGE (i:Identity {{id: '{profile_id}'}})
-            ON CREATE SET i.is_known = {str(is_known).lower()}, i.created_at = timestamp()
-            ON MATCH  SET i.is_known = {str(is_known).lower()}, i.updated_at = timestamp()
+            SET i.is_known = {str(is_known).lower()}, i.updated_at = timestamp()
             RETURN i
         $$) AS (i agtype)
     """)
@@ -25,7 +24,7 @@ def upsert_campaign_node(campaign_id: str, channel: str) -> None:
     execute_cypher(f"""
         SELECT * FROM cypher('{GRAPH}', $$
             MERGE (c:Campaign {{id: '{campaign_id}'}})
-            ON CREATE SET c.channel = '{channel}', c.created_at = timestamp()
+            SET c.channel = '{channel}', c.updated_at = timestamp()
             RETURN c
         $$) AS (c agtype)
     """)
@@ -41,7 +40,7 @@ def upsert_conversion_node(
     execute_cypher(f"""
         SELECT * FROM cypher('{GRAPH}', $$
             MERGE (conv:Conversion {{id: '{conversion_id}'}})
-            ON CREATE SET conv.revenue = {revenue}, conv.currency = '{currency}', conv.created_at = timestamp()
+            SET conv.revenue = {revenue}, conv.currency = '{currency}', conv.updated_at = timestamp()
             RETURN conv
         $$) AS (conv agtype)
     """)
@@ -66,7 +65,7 @@ def link_campaign_to_conversion(
         SELECT * FROM cypher('{GRAPH}', $$
             MATCH (camp:Campaign {{id: '{campaign_id}'}}), (conv:Conversion {{id: '{conversion_id}'}})
             MERGE (camp)-[r:GENERATED {{model: '{model}'}}]->(conv)
-            ON CREATE SET r.credit = {credit}, r.revenue_credit = {revenue_credit}
+            SET r.credit = {credit}, r.revenue_credit = {revenue_credit}
             RETURN camp, r, conv
         $$) AS (camp agtype, r agtype, conv agtype)
     """)
@@ -81,7 +80,7 @@ def query_revenue_by_channel(model: str = "linear", limit: int = 10) -> list[dic
                 camp.channel         AS channel,
                 count(conv)          AS conversions,
                 sum(r.revenue_credit) AS total_revenue
-            ORDER BY total_revenue DESC
+            ORDER BY sum(r.revenue_credit) DESC
             LIMIT {limit}
         $$) AS (channel agtype, conversions agtype, total_revenue agtype)
     """)
@@ -105,7 +104,7 @@ def query_identity_ltv(min_revenue: float = 0.0, limit: int = 10) -> list[dict]:
                 i.id              AS identity_id,
                 count(conv)       AS total_conversions,
                 sum(conv.revenue) AS ltv
-            ORDER BY ltv DESC
+            ORDER BY sum(conv.revenue) DESC
             LIMIT {limit}
         $$) AS (identity_id agtype, total_conversions agtype, ltv agtype)
     """)
