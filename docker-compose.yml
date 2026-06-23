@@ -18,7 +18,7 @@ services:
         delay: 10s
       resources:
         limits:
-          memory: 768M
+          memory: 1G
       labels:
         - "traefik.enable=true"
         - "traefik.http.routers.intelligence.rule=Host(`intelligence.ehos.com.br`)"

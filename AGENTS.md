@@ -38,7 +38,7 @@ docker exec -w /app $(docker ps -q -f name=intelligence_intelligence_api) alembi
 ## Embeddings (Creative Graph)
 - `fastembed` ONNX CPU — modelo `all-MiniLM-L6-v2`, 384-dim
 - Qdrant collection: `creative_embeddings`
-- API memory limit: **768M** (fastembed ~150MB extra sobre base)
+- API memory limit: **768M** → **1G** (Briefing #5: Prophet + pandas)
 - `test_embed_produces_384_dims` roda fastembed **real** — deve passar antes de merge
 
 ## Camadas (briefings)
