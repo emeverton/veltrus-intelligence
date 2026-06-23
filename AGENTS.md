@@ -1,0 +1,25 @@
+# AGENTS.md — veltrus-intelligence
+
+## Stack
+- Python 3.12, FastAPI, LangGraph, Qdrant, NATS, PostgreSQL
+- Deploy: Docker Swarm no VPS 76.13.232.175
+
+## Regras críticas de deploy
+- Usar `docker stack deploy -c docker-compose.yml intelligence` — NUNCA `docker compose up`
+- Reverse proxy: Traefik com `certresolver=letsencryptresolver` — NUNCA `letsencrypt`
+- NUNCA usar Caddy
+- Rede Swarm: `emeverton` (external: true)
+- Porta da API: 8001 (8000 é do veltrus-ads-agent)
+
+## Convenções de código
+- Todos os imports absolutos a partir de `src/`
+- `PYTHONPATH=/app` configurado no Dockerfile
+- Configuração via pydantic-settings (não hardcodar valores)
+- NUNCA commitar `.env`
+
+## Próximas camadas (não implementar antes do briefing)
+- Briefing #1: Identity Graph (Postgres + Apache AGE + matching)
+- Briefing #2: Attribution Engine (Shapley + PyMC + Meridian)
+- Briefing #3: Revenue Graph + Creative Graph
+- Briefing #4: Agent Layer (LangGraph + Claude API)
+- Briefing #5: AI Modalities (FLUX, Wan2.1, Kokoro, Hunyuan3D via Vast.ai)

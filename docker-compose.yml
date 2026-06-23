@@ -1,0 +1,62 @@
+services:
+  intelligence_api:
+    image: veltrus-intelligence:latest
+    networks:
+      - emeverton
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - DATABASE_URL=${DATABASE_URL}
+      - QDRANT_HOST=intelligence_qdrant
+      - QDRANT_PORT=6333
+      - NATS_URL=nats://intelligence_nats:4222
+      - DEBUG=false
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+      resources:
+        limits:
+          memory: 512M
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.intelligence.rule=Host(`intelligence.ehos.com.br`)"
+        - "traefik.http.routers.intelligence.entrypoints=websecure"
+        - "traefik.http.routers.intelligence.tls.certresolver=letsencryptresolver"
+        - "traefik.http.routers.intelligence.service=intelligence"
+        - "traefik.http.services.intelligence.loadbalancer.server.port=8001"
+        - "traefik.http.services.intelligence.loadbalancer.passHostHeader=1"
+
+  intelligence_qdrant:
+    image: qdrant/qdrant:v1.11.5
+    networks:
+      - emeverton
+    volumes:
+      - qdrant_data:/qdrant/storage
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      resources:
+        limits:
+          memory: 512M
+
+  intelligence_nats:
+    image: nats:2.10-alpine
+    command: ["-js", "-m", "8222"]
+    networks:
+      - emeverton
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      resources:
+        limits:
+          memory: 128M
+
+networks:
+  emeverton:
+    external: true
+
+volumes:
+  qdrant_data:
