@@ -24,8 +24,8 @@ docker exec -w /app $(docker ps -q -f name=intelligence_intelligence_api) alembi
 - NUNCA commitar `.env`
 
 ## Próximas camadas (não implementar antes do briefing)
-- Briefing #1: Identity Graph (Postgres + Union-Find) — **concluído**
-- Briefing #2: Attribution Engine (Shapley + PyMC + Meridian)
+- Briefing #1: Identity Graph (Postgres + Union-Find) — concluído
+- Briefing #2: Attribution Engine (4 modelos + Shapley NATS) — concluído
 - Briefing #3: Revenue Graph + Creative Graph (Apache AGE entra aqui)
 - Briefing #4: Agent Layer (LangGraph + Claude API)
 - Briefing #5: AI Modalities (FLUX, Wan2.1, Kokoro, Hunyuan3D via Vast.ai)

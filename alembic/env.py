@@ -8,6 +8,11 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from src.config import settings
 from src.database import Base, async_url
+from src.attribution.models import (  # noqa: F401
+    AttributionConversion,
+    AttributionResult,
+    AttributionTouchpoint,
+)
 from src.identity.models import IdentityEvent, IdentityProfile, IdentityProfileMerge, IdentitySignal  # noqa: F401
 
 config = context.config

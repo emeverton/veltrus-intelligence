@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     qdrant_host: str = "intelligence_qdrant"
     qdrant_port: int = 6333
     nats_url: str = "nats://intelligence_nats:4222"
+    attribution_worker_enabled: bool = True
 
     class Config:
         env_file = ".env"
