@@ -113,4 +113,54 @@ TOOLS = [
             "required": ["profile_id"],
         },
     },
+    {
+        "name": "generate_image",
+        "description": (
+            "Gera uma imagem com FLUX.1-schnell a partir de um prompt de texto. "
+            "Requer GPU ativa (Vast.ai). Use para criar visuais de campanha, "
+            "variações de criativos ou imagens ilustrativas. "
+            "Retorna imagem PNG em base64. "
+            "Se GPU offline, informe ao usuário que a GPU está desligada."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "prompt": {
+                    "type": "string",
+                    "description": "Descrição detalhada da imagem a gerar.",
+                },
+                "width": {"type": "integer", "default": 768},
+                "height": {"type": "integer", "default": 768},
+            },
+            "required": ["prompt"],
+        },
+    },
+    {
+        "name": "synthesize_voice",
+        "description": (
+            "Sintetiza voz a partir de texto usando Kokoro TTS (CPU). "
+            "Roda no servidor sem GPU — disponível sempre. "
+            "Retorna áudio WAV em base64. "
+            "Use para criar narração, spots de rádio ou áudio de campanha."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "text": {"type": "string", "description": "Texto a narrar."},
+                "voice": {
+                    "type": "string",
+                    "enum": ["af", "am"],
+                    "default": "af",
+                    "description": "af = feminino, am = masculino.",
+                },
+                "speed": {"type": "number", "default": 1.0},
+            },
+            "required": ["text"],
+        },
+    },
+    {
+        "name": "gpu_status",
+        "description": "Verifica se o servidor GPU (Vast.ai) está online e disponível para geração.",
+        "input_schema": {"type": "object", "properties": {}},
+    },
 ]
