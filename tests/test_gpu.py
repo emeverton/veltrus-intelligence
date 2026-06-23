@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, patch
 @pytest.mark.asyncio
 async def test_gpu_health_offline():
     """Sem instâncias ativas: retorna offline."""
-    with patch("src.gpu.vast_client.list_instances", AsyncMock(return_value=[])):
+    with patch("src.gpu.instance_manager.list_instances", AsyncMock(return_value=[])):
         from src.gpu.generate_client import gpu_health
 
         result = await gpu_health()
@@ -15,7 +15,7 @@ async def test_gpu_health_offline():
 @pytest.mark.asyncio
 async def test_generate_image_raises_when_gpu_offline():
     """generate_image lança RuntimeError se GPU offline."""
-    with patch("src.gpu.instance_manager.get_inference_url", AsyncMock(return_value=None)):
+    with patch("src.gpu.generate_client.get_inference_url", AsyncMock(return_value=None)):
         from src.gpu.generate_client import generate_image
 
         with pytest.raises(RuntimeError, match="offline"):

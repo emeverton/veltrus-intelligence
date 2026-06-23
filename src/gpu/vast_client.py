@@ -13,6 +13,9 @@ def _headers() -> dict:
 
 async def list_instances() -> list[dict]:
     """Lista instâncias GPU do usuário."""
+    if not settings.vastai_api_key:
+        logger.debug("VASTAI_API_KEY not configured — skipping instance lookup")
+        return []
     async with httpx.AsyncClient(timeout=30) as client:
         r = await client.get(f"{BASE_URL}/instances/", headers=_headers())
         r.raise_for_status()
@@ -22,9 +25,9 @@ async def list_instances() -> list[dict]:
 async def start_instance(offer_id: int, image: str, disk_gb: float = 30.0) -> dict:
     """
     Cria e inicia uma instância Vast.ai a partir de um offer_id.
-    Para obter offer_id com RTX 4090: usar a API de search ou hardcodar
-    um offer_id confiável do seu histórico de uso.
     """
+    if not settings.vastai_api_key:
+        raise RuntimeError("VASTAI_API_KEY not configured")
     payload = {
         "client_id": "me",
         "image": image,
