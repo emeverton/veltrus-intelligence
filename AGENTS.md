@@ -4,8 +4,14 @@
 - Python 3.12, FastAPI, LangGraph, Qdrant, NATS, PostgreSQL
 - Deploy: Docker Swarm no VPS 76.13.232.175
 
-## Regras críticas de deploy
-- Usar `docker stack deploy -c docker-compose.yml intelligence` — NUNCA `docker compose up`
+## Deploy
+```bash
+cd /opt/veltrus-intelligence
+set -a && source .env && set +a   # obrigatório antes do stack deploy
+docker build -t veltrus-intelligence:latest .
+docker stack deploy -c docker-compose.yml intelligence
+docker exec -w /app $(docker ps -q -f name=intelligence_intelligence_api) alembic upgrade head
+```
 - Reverse proxy: Traefik com `certresolver=letsencryptresolver` — NUNCA `letsencrypt`
 - NUNCA usar Caddy
 - Rede Swarm: `emeverton` (external: true)
