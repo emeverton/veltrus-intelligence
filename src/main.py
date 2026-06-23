@@ -9,8 +9,6 @@ from src.api.v1 import agents, attribution, creatives, generate, graphs, identit
 from src.agents.worker import run_agent_worker
 from src.attribution.worker import run_worker
 from src.config import settings
-from src.embeddings.model import warmup as warmup_embeddings
-from src.embeddings.qdrant_ops import ensure_collection
 from src.nats_client import close_nats, ensure_agents_stream, ensure_attribution_stream
 
 logger = logging.getLogger(__name__)
@@ -37,8 +35,6 @@ async def lifespan(app: FastAPI):
     if settings.attribution_worker_enabled:
         await ensure_attribution_stream()
         await ensure_agents_stream()
-        asyncio.create_task(asyncio.to_thread(warmup_embeddings))
-        asyncio.create_task(asyncio.to_thread(ensure_collection))
         worker_task = asyncio.create_task(_run_worker_safe())
         agent_worker_task = asyncio.create_task(_run_agent_worker_safe())
         logger.info("Attribution NATS worker started")

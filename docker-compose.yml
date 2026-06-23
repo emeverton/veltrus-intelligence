@@ -11,7 +11,9 @@ services:
       - NATS_URL=nats://intelligence_nats:4222
       - GRAPH_DB_URL=postgresql://graphuser:${GRAPH_DB_PASSWORD}@intelligence_graphdb:5432/revenue_graph
       - VASTAI_API_KEY=${VASTAI_API_KEY}
+      - VASTAI_OFFER_ID=${VASTAI_OFFER_ID:-0}
       - HF_TOKEN=${HF_TOKEN}
+      - GPU_INFERENCE_IMAGE=${GPU_INFERENCE_IMAGE:-veltrus-intelligence-gpu:latest}
       - DEBUG=false
     deploy:
       replicas: 1
@@ -20,7 +22,7 @@ services:
         delay: 10s
       resources:
         limits:
-          memory: 1G
+          memory: 1536M
       labels:
         - "traefik.enable=true"
         - "traefik.http.routers.intelligence.rule=Host(`intelligence.ehos.com.br`)"
