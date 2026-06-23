@@ -18,8 +18,13 @@
 - NUNCA commitar `.env`
 
 ## Próximas camadas (não implementar antes do briefing)
-- Briefing #1: Identity Graph (Postgres + Apache AGE + matching)
+- Briefing #1: Identity Graph (Postgres + Union-Find) — **concluído**
 - Briefing #2: Attribution Engine (Shapley + PyMC + Meridian)
-- Briefing #3: Revenue Graph + Creative Graph
+- Briefing #3: Revenue Graph + Creative Graph (Apache AGE entra aqui)
 - Briefing #4: Agent Layer (LangGraph + Claude API)
 - Briefing #5: AI Modalities (FLUX, Wan2.1, Kokoro, Hunyuan3D via Vast.ai)
+
+## Migrations (produção)
+- Rodar **dentro do container** após deploy: `alembic upgrade head`
+- NUNCA `docker service update --args` para mudar CMD — usar `docker stack deploy`
+- DATABASE_URL no `.env` usa `postgresql://`; engine async usa `postgresql+asyncpg://` via `async_url()`

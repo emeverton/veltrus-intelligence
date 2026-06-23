@@ -7,6 +7,8 @@ FROM python:3.12-slim
 WORKDIR /app
 COPY --from=builder /root/.local /root/.local
 COPY src/ ./src/
+COPY alembic/ ./alembic/
+COPY alembic.ini .
 ENV PATH=/root/.local/bin:$PATH
 ENV PYTHONPATH=/app
 EXPOSE 8001
