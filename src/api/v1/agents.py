@@ -35,7 +35,7 @@ async def run_agent_job(
     await session.execute(
         sql_text("""
             INSERT INTO agent_jobs (id, task, context, status)
-            VALUES (:id, :task, :context::jsonb, 'pending')
+            VALUES (:id, :task, CAST(:context AS jsonb), 'pending')
         """),
         {
             "id": job_id,

@@ -35,7 +35,7 @@ async def handle_agent_job(msg) -> None:
         async with AsyncSessionFactory() as session:
             await session.execute(
                 sql_text(
-                    "UPDATE agent_jobs SET status='done', result=:result::jsonb, "
+                    "UPDATE agent_jobs SET status='done', result=CAST(:result AS jsonb), "
                     "updated_at=NOW() WHERE id=:id"
                 ),
                 {"id": job_id, "result": json.dumps({"answer": result})},
