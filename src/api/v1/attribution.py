@@ -2,6 +2,8 @@ from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
 
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,6 +16,7 @@ from src.attribution.schemas import (
     TouchpointIngestRequest,
 )
 from src.database import get_session
+from src.graphs.revenue_graph import sync_attribution_to_graph
 from src.nats_client import publish
 
 router = APIRouter()
@@ -90,6 +93,30 @@ async def compute_attribution(
         )
 
     await session.commit()
+
+    channel_campaign: dict[str, Optional[str]] = {}
+    for t in touchpoints_db:
+        if t.campaign_id:
+            channel_campaign[t.channel] = t.campaign_id
+
+    graph_payload = []
+    for model_name, credits in sync_results.items():
+        for channel, credit in credits.items():
+            graph_payload.append({
+                "model": model_name,
+                "channel": channel,
+                "campaign_id": channel_campaign.get(channel),
+                "credit": credit,
+                "revenue_credit": credit * payload.revenue,
+            })
+
+    asyncio.create_task(sync_attribution_to_graph(
+        profile_id=str(payload.profile_id),
+        conversion_id=str(conversion.id),
+        revenue=payload.revenue,
+        currency=payload.currency,
+        attribution_results=graph_payload,
+    ))
 
     await publish(
         SHAPLEY_SUBJECT,

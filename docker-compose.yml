@@ -9,6 +9,7 @@ services:
       - QDRANT_HOST=intelligence_qdrant
       - QDRANT_PORT=6333
       - NATS_URL=nats://intelligence_nats:4222
+      - GRAPH_DB_URL=postgresql://graphuser:${GRAPH_DB_PASSWORD}@intelligence_graphdb:5432/revenue_graph
       - DEBUG=false
     deploy:
       replicas: 1
@@ -54,9 +55,28 @@ services:
         limits:
           memory: 128M
 
+  intelligence_graphdb:
+    image: veltrus-intelligence-graphdb:latest
+    networks:
+      - emeverton
+    volumes:
+      - graphdb_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=revenue_graph
+      - POSTGRES_USER=graphuser
+      - POSTGRES_PASSWORD=${GRAPH_DB_PASSWORD}
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      resources:
+        limits:
+          memory: 512M
+
 networks:
   emeverton:
     external: true
 
 volumes:
   qdrant_data:
+  graphdb_data:
