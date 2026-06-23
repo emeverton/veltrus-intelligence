@@ -1,1 +1,1 @@
-"""Identity Graph layer — Briefing #1 (Postgres + Apache AGE + matching)."""
+"""Identity Graph — Postgres + Union-Find (Briefing #1). Sem Apache AGE."""
