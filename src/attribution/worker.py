@@ -6,7 +6,7 @@ from uuid import UUID
 from src.attribution import repository as repo
 from src.attribution.models_math import Touchpoint, shapley
 from src.database import AsyncSessionFactory
-from src.nats_client import get_nats
+from src.nats_client import ensure_attribution_stream, get_nats
 
 logger = logging.getLogger(__name__)
 SUBJECT = "attribution.shapley.compute"
@@ -47,13 +47,9 @@ async def handle_shapley_job(msg) -> None:
 
 
 async def run_worker() -> None:
+    await ensure_attribution_stream()
     nc = await get_nats()
     js = nc.jetstream()
-
-    try:
-        await js.add_stream(name="attribution", subjects=[SUBJECT, "attribution.>"])
-    except Exception:
-        pass
 
     await js.subscribe(SUBJECT, cb=handle_shapley_job, durable="shapley-worker")
     logger.info("Attribution worker listening on %s", SUBJECT)
