@@ -8,6 +8,7 @@
 ```bash
 cd /opt/veltrus-intelligence
 set -a && source .env && set +a   # obrigatório antes do stack deploy
+docker build -t veltrus-intelligence-graphdb:latest ./infra/postgres-age/  # ~5-8min na 1ª vez
 docker build -t veltrus-intelligence:latest .
 docker stack deploy -c docker-compose.yml intelligence
 docker exec -w /app $(docker ps -q -f name=intelligence_intelligence_api) alembic upgrade head
@@ -23,14 +24,30 @@ docker exec -w /app $(docker ps -q -f name=intelligence_intelligence_api) alembi
 - Configuração via pydantic-settings (não hardcodar valores)
 - NUNCA commitar `.env`
 
-## Próximas camadas (não implementar antes do briefing)
+## NATS JetStream
+- Streams devem ser criados via `ensure_attribution_stream()` com `StreamConfig` no lifespan da aplicação, **antes** de qualquer `publish()` ou `subscribe()`
+- NUNCA assumir que o stream existe — `js.publish()` lança `NoStreamResponseError` se o stream não foi criado
+
+## Apache AGE (Revenue Graph)
+- AGE **NÃO** vai no postgres compartilhado (n8n, Evolution API) — container separado `intelligence_graphdb` na stack intelligence
+- `asyncpg` **NÃO** funciona com `agtype` (tipo customizado do AGE) — queries AGE usam `psycopg2` síncrono via `asyncio.to_thread()`
+- Build da imagem graphdb compila AGE do source (~5-8 min na 1ª vez) — aguardar container Running antes de smoke tests
+- `intelligence_graphdb` é acesso interno apenas — sem labels Traefik
+
+## Camadas (briefings)
 - Briefing #1: Identity Graph (Postgres + Union-Find) — concluído
 - Briefing #2: Attribution Engine (4 modelos + Shapley NATS) — concluído
-- Briefing #3: Revenue Graph + Creative Graph (Apache AGE entra aqui)
-- Briefing #4: Agent Layer (LangGraph + Claude API)
-- Briefing #5: AI Modalities (FLUX, Wan2.1, Kokoro, Hunyuan3D via Vast.ai)
+- Briefing #3: Revenue Graph (Apache AGE + graph sync) — em andamento
+- Briefing #4: Creative Graph + Qdrant embeddings (Vast.ai) — não implementar antes
+- Briefing #5: Agent Layer (LangGraph + Claude API)
+- Briefing #6: AI Modalities (FLUX, Wan2.1, Kokoro, Hunyuan3D via Vast.ai)
 
 ## Migrations (produção)
 - Rodar **dentro do container** após deploy: `alembic upgrade head`
 - NUNCA `docker service update --args` para mudar CMD — usar `docker stack deploy`
 - DATABASE_URL no `.env` usa `postgresql://`; engine async usa `postgresql+asyncpg://` via `async_url()`
+
+## Merge order (PRs stacked)
+- PR #2 (Identity Graph) → merge em `main` primeiro
+- PR #3 (Attribution Engine) → rebase em `main`, depois merge
+- NUNCA mergear em ordem inversa quando PR está stacked
