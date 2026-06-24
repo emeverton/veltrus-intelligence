@@ -1,1 +1,1 @@
-"""Agent implementations — Briefing #4 (LangGraph + Claude API)."""
+"""Agent Layer — LangGraph + Claude API + Revenue Intelligence tools."""
