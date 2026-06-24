@@ -82,12 +82,19 @@ async def send_purchase_event(
     revenue: float,
     currency: str,
     event_source_url: Optional[str] = None,
+    pixel_id_override: Optional[str] = None,
+    access_token_override: Optional[str] = None,
+    test_event_code_override: Optional[str] = None,
 ) -> dict:
     """
     Envia evento Purchase ao Meta CAPI.
     Fire-and-forget — não bloqueia o pipeline.
     """
-    if not settings.meta_pixel_id or not settings.meta_access_token:
+    pixel_id = pixel_id_override or settings.meta_pixel_id
+    access_token = access_token_override or settings.meta_access_token
+    test_code = test_event_code_override or settings.meta_test_event_code
+
+    if not pixel_id or not access_token:
         logger.info(
             "Meta CAPI não configurado (META_PIXEL_ID ou META_ACCESS_TOKEN vazio) — skip"
         )
@@ -103,12 +110,12 @@ async def send_purchase_event(
 
     payload: dict = {
         "data": [event],
-        "access_token": settings.meta_access_token,
+        "access_token": access_token,
     }
-    if settings.meta_test_event_code:
-        payload["test_event_code"] = settings.meta_test_event_code
+    if test_code:
+        payload["test_event_code"] = test_code
 
-    url = META_CAPI_URL.format(pixel_id=settings.meta_pixel_id)
+    url = META_CAPI_URL.format(pixel_id=pixel_id)
 
     try:
         async with httpx.AsyncClient(timeout=10) as client:

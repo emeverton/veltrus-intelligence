@@ -69,6 +69,16 @@ docker exec -w /app $(docker ps -q -f name=intelligence_intelligence_api) alembi
 - Briefing #6: AI Modalities (FLUX, Wan2.1, Kokoro, Hunyuan3D via Vast.ai)
 - Briefing #7: Lazy loading + Vast.ai + Qwen dual-mode LLM
 - Briefing #8: Shopify webhook ingestion (orders/paid → identity → attribution → graph)
+- Briefing #9: Sentry + /health/detailed + Meta CAPI
+- Briefing #10: Multi-tenant `shopify_stores` + Google Ads offline upload + Admin API
+
+## Multi-tenant Shopify (Briefing #10)
+- Webhook roteia por `X-Shopify-Shop-Domain` → `shopify_stores.webhook_secret`
+- Fallback: `SHOPIFY_WEBHOOK_SECRET` do `.env` (backward compat)
+- Admin: `POST /api/v1/admin/stores` com header `X-Admin-Key: ${ADMIN_API_KEY}`
+- **Seed obrigatório** após migration 013 — tabela nasce vazia
+- Google Ads: REST + `google-auth` token refresh — **não** instalar SDK `google-ads`
+
 
 ## Migrations (produção)
 - Rodar **dentro do container** após deploy: `alembic upgrade head`
