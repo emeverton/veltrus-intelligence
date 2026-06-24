@@ -1,7 +1,9 @@
 """
 Endpoint de analytics agregado — primeiro valor visível para o usuário.
 """
-from fastapi import APIRouter
+from typing import Optional
+
+from fastapi import APIRouter, Query
 from sqlalchemy import text as sql_text
 
 from src.database import AsyncSessionFactory
@@ -10,72 +12,86 @@ router = APIRouter()
 
 
 @router.get("/summary")
-async def analytics_summary():
+async def analytics_summary(
+    shop_domain: Optional[str] = Query(
+        default=None, description="Filtrar por loja (shop_domain)"
+    ),
+):
     """
     Resumo executivo do pipeline de dados.
-    Retorna: profiles, conversões, receita por canal (últimos 30 dias), top LTV.
+    shop_domain: opcional — se fornecido, filtra conversões da loja específica.
     """
+    shop_filter = ""
+    shop_params: dict = {}
+    if shop_domain:
+        shop_filter = (
+            "AND ac.id IN (SELECT conversion_id FROM shopify_orders "
+            "WHERE shop_domain = :shop_domain AND conversion_id IS NOT NULL)"
+        )
+        shop_params = {"shop_domain": shop_domain}
+
     async with AsyncSessionFactory() as session:
         profiles = await session.execute(
             sql_text("SELECT COUNT(*) FROM identity_profiles")
         )
         total_profiles = profiles.scalar()
 
-        conversions = await session.execute(
-            sql_text("""
-                SELECT COUNT(*) AS total,
-                       COALESCE(SUM(revenue), 0) AS total_revenue,
-                       currency
-                FROM attribution_conversions
-                WHERE occurred_at >= NOW() - INTERVAL '30 days'
-                GROUP BY currency
-                ORDER BY total_revenue DESC
-                LIMIT 1
-            """)
+        orders_q = (
+            "SELECT COUNT(*) FROM shopify_orders "
+            "WHERE created_at >= NOW() - INTERVAL '30 days'"
         )
+        if shop_domain:
+            orders_q += " AND shop_domain = :shop_domain"
+        shopify_count = await session.execute(sql_text(orders_q), shop_params)
+
+        conv_q = f"""
+            SELECT COUNT(*) AS total,
+                   COALESCE(SUM(ac.revenue), 0) AS total_revenue,
+                   ac.currency
+            FROM attribution_conversions ac
+            WHERE ac.occurred_at >= NOW() - INTERVAL '30 days'
+            {shop_filter}
+            GROUP BY ac.currency
+            ORDER BY total_revenue DESC
+            LIMIT 1
+        """
+        conversions = await session.execute(sql_text(conv_q), shop_params)
         conv_row = conversions.fetchone()
 
-        by_channel = await session.execute(
-            sql_text("""
-                SELECT ar.channel,
-                       COUNT(DISTINCT ar.conversion_id) AS conversions,
-                       ROUND(SUM(ar.revenue_credit)::numeric, 2) AS revenue_credit
-                FROM attribution_results ar
-                JOIN attribution_conversions ac ON ac.id = ar.conversion_id
-                WHERE ar.model = 'linear'
-                  AND ac.occurred_at >= NOW() - INTERVAL '30 days'
-                GROUP BY ar.channel
-                ORDER BY revenue_credit DESC
-                LIMIT 10
-            """)
-        )
+        channel_q = f"""
+            SELECT ar.channel,
+                   COUNT(DISTINCT ar.conversion_id) AS conversions,
+                   ROUND(SUM(ar.revenue_credit)::numeric, 2) AS revenue_credit
+            FROM attribution_results ar
+            JOIN attribution_conversions ac ON ac.id = ar.conversion_id
+            WHERE ar.model = 'linear'
+              AND ac.occurred_at >= NOW() - INTERVAL '30 days'
+            {shop_filter}
+            GROUP BY ar.channel
+            ORDER BY revenue_credit DESC
+            LIMIT 10
+        """
+        by_channel = await session.execute(sql_text(channel_q), shop_params)
         channels = by_channel.fetchall()
 
-        top_ltv = await session.execute(
-            sql_text("""
-                SELECT profile_id,
-                       COUNT(*) AS conversions,
-                       ROUND(SUM(revenue)::numeric, 2) AS ltv
-                FROM attribution_conversions
-                GROUP BY profile_id
-                ORDER BY ltv DESC
-                LIMIT 5
-            """)
-        )
+        ltv_q = f"""
+            SELECT ac.profile_id,
+                   COUNT(*) AS conversions,
+                   ROUND(SUM(ac.revenue)::numeric, 2) AS ltv
+            FROM attribution_conversions ac
+            WHERE ac.occurred_at >= NOW() - INTERVAL '30 days'
+            {shop_filter}
+            GROUP BY ac.profile_id
+            ORDER BY ltv DESC
+            LIMIT 5
+        """
+        top_ltv = await session.execute(sql_text(ltv_q), shop_params)
         ltv_rows = top_ltv.fetchall()
-
-        shopify_count = await session.execute(
-            sql_text(
-                "SELECT COUNT(*) FROM shopify_orders "
-                "WHERE created_at >= NOW() - INTERVAL '30 days'"
-            )
-        )
 
     return {
         "period": "last_30_days",
-        "profiles": {
-            "total": total_profiles,
-        },
+        "shop_domain": shop_domain,
+        "profiles": {"total": total_profiles},
         "shopify_orders": shopify_count.scalar(),
         "conversions": {
             "total": conv_row.total if conv_row else 0,

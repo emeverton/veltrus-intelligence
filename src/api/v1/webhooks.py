@@ -65,19 +65,24 @@ async def shopify_orders_paid(request: Request):
 
 
 @router.get("/shopify/recent")
-async def recent_orders(limit: int = 10):
+async def recent_orders(
+    limit: int = 10,
+    shop_domain: str | None = None,
+):
     """Últimas ordens recebidas via webhook."""
+    query = """
+        SELECT shopify_order_id, shop_domain, email, total_price, currency,
+               channel, processing_status, created_at
+        FROM shopify_orders
+    """
+    params: dict = {"limit": limit}
+    if shop_domain:
+        query += " WHERE shop_domain = :shop_domain"
+        params["shop_domain"] = shop_domain
+    query += " ORDER BY created_at DESC LIMIT :limit"
+
     async with AsyncSessionFactory() as session:
-        result = await session.execute(
-            sql_text("""
-                SELECT shopify_order_id, shop_domain, email, total_price, currency,
-                       channel, processing_status, created_at
-                FROM shopify_orders
-                ORDER BY created_at DESC
-                LIMIT :limit
-            """),
-            {"limit": limit},
-        )
+        result = await session.execute(sql_text(query), params)
         rows = result.fetchall()
 
     return {
