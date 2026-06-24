@@ -317,7 +317,7 @@ async function doAuth() {
     adminKey = k;
     localStorage.setItem('veltrus_admin_key', k);
     document.getElementById('auth').style.display = 'none';
-    document.getElementById('app').style.display = '';
+    document.getElementById('app').style.display = 'block';
     loadAll();
   } else {
     document.getElementById('auth-err').style.display = 'block';
@@ -342,7 +342,7 @@ function logout() {
 (async function() {
   if (adminKey && await testKey(adminKey)) {
     document.getElementById('auth').style.display = 'none';
-    document.getElementById('app').style.display = '';
+    document.getElementById('app').style.display = 'block';
     loadAll();
   }
 })();
