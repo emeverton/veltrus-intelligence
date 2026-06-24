@@ -29,7 +29,30 @@ class VoiceGenerateRequest(BaseModel):
 @router.get("/gpu/status")
 async def get_gpu_status():
     """Status do servidor GPU Vast.ai."""
-    return await gpu_health()
+    from src.gpu.instance_manager import get_llm_url
+
+    health = await gpu_health()
+    health["llm_url_available"] = (await get_llm_url()) is not None
+    return health
+
+
+@router.post("/gpu/start")
+async def start_gpu_instance():
+    """
+    Inicia uma instância GPU no Vast.ai.
+    Aguarda até 5 minutos para ficar pronta.
+    """
+    from src.gpu.instance_manager import start_gpu
+
+    return await start_gpu(wait_for_ready=True, timeout_seconds=300)
+
+
+@router.post("/gpu/stop")
+async def stop_gpu_instance():
+    """Para e destrói a instância GPU. Interrompe cobranças imediatamente."""
+    from src.gpu.instance_manager import stop_gpu
+
+    return await stop_gpu()
 
 
 @router.post("/image")

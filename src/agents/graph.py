@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import operator
@@ -9,11 +10,38 @@ from langgraph.graph import END, StateGraph
 from src.agents.tool_executor import execute_tool
 from src.agents.tools import TOOLS
 from src.config import settings
+from src.gpu.llm_client import (
+    anthropic_tools_to_openai,
+    chat_completion as qwen_chat,
+    anthropic_to_openai_messages,
+)
 
 logger = logging.getLogger(__name__)
-_client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+_anthropic_client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+_openai_tools = anthropic_tools_to_openai(TOOLS)
 
 MAX_ITERATIONS = 6
+
+SYSTEM_PROMPT = (
+    "Você é um Revenue Intelligence Agent da Veltrus. "
+    "Analise dados de marketing, atribuição e identidade para gerar insights acionáveis. "
+    "Use as tools disponíveis para obter dados reais antes de responder. "
+    "Responda sempre em português, de forma objetiva e técnica."
+)
+
+
+class TextBlock:
+    def __init__(self, text: str):
+        self.type = "text"
+        self.text = text
+
+
+class ToolUseBlock:
+    def __init__(self, block_id: str, name: str, tool_input: dict):
+        self.type = "tool_use"
+        self.id = block_id
+        self.name = name
+        self.input = tool_input
 
 
 class AgentState(TypedDict):
@@ -23,33 +51,64 @@ class AgentState(TypedDict):
     result: Optional[str]
 
 
+async def _call_llm_with_fallback(messages: list[dict]) -> tuple[str, list]:
+    """
+    Tenta Qwen 7B primeiro (GPU). Fallback para Claude API se GPU offline.
+    Retorna (provider_used, response_content_blocks).
+    """
+    try:
+        oai_messages = anthropic_to_openai_messages(messages)
+        response = await qwen_chat(oai_messages, tools=_openai_tools)
+        msg = response["choices"][0]["message"]
+
+        content_blocks = []
+        if msg.get("content"):
+            content_blocks.append(TextBlock(msg["content"]))
+        if msg.get("tool_calls"):
+            for tc in msg["tool_calls"]:
+                content_blocks.append(
+                    ToolUseBlock(
+                        tc["id"],
+                        tc["function"]["name"],
+                        json.loads(tc["function"]["arguments"]),
+                    )
+                )
+        return "qwen", content_blocks
+
+    except RuntimeError:
+        if not settings.anthropic_api_key:
+            raise RuntimeError(
+                "GPU offline e ANTHROPIC_API_KEY não configurada — nenhum LLM disponível"
+            ) from None
+
+        response = await asyncio.to_thread(
+            _anthropic_client.messages.create,
+            model="claude-sonnet-4-6",
+            max_tokens=2048,
+            system=SYSTEM_PROMPT,
+            messages=messages,
+            tools=TOOLS,
+        )
+        return "claude", response.content
+
+
 async def reasoning_node(state: AgentState) -> AgentState:
-    """Claude API com tool_use. Retorna mensagem com texto ou tool_use blocks."""
+    """Dual-mode LLM com tool_use. Qwen se GPU online, Claude fallback."""
     logger.info(
         "Agent reasoning iteration %s — task: %s",
         state["iteration"],
         state["task"][:80],
     )
 
-    response = _client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=2048,
-        system=(
-            "Você é um Revenue Intelligence Agent da Veltrus. "
-            "Analise dados de marketing, atribuição e identidade para gerar insights acionáveis. "
-            "Use as tools disponíveis para obter dados reais antes de responder. "
-            "Responda sempre em português, de forma objetiva e técnica."
-        ),
-        messages=state["messages"],
-        tools=TOOLS,
-    )
+    provider, content = await _call_llm_with_fallback(state["messages"])
+    logger.info("LLM provider used: %s", provider)
 
-    assistant_message = {"role": "assistant", "content": response.content}
-    has_tool_call = any(block.type == "tool_use" for block in response.content)
+    assistant_message = {"role": "assistant", "content": content}
+    has_tool_call = any(getattr(b, "type", None) == "tool_use" for b in content)
 
     if not has_tool_call or state["iteration"] >= MAX_ITERATIONS:
-        text_blocks = [b.text for b in response.content if hasattr(b, "text")]
-        final_text = "\n".join(text_blocks) or "Análise concluída sem resposta textual."
+        text_blocks = [b.text for b in content if hasattr(b, "text")]
+        final_text = "\n".join(text_blocks) or "Análise concluída."
         return {
             "messages": [assistant_message],
             "iteration": state["iteration"] + 1,
@@ -64,14 +123,19 @@ async def reasoning_node(state: AgentState) -> AgentState:
 
 
 async def tool_node(state: AgentState) -> AgentState:
-    """Executa todas as tools chamadas pelo Claude na última mensagem."""
+    """Executa todas as tools chamadas pelo LLM na última mensagem."""
     last_message = state["messages"][-1]
     tool_results = []
 
     for block in last_message["content"]:
-        if block.type != "tool_use":
+        block_type = getattr(block, "type", None)
+        if block_type != "tool_use":
             continue
-        logger.info("Executing tool: %s input=%s", block.name, json.dumps(block.input)[:100])
+        logger.info(
+            "Executing tool: %s input=%s",
+            block.name,
+            json.dumps(block.input)[:100],
+        )
         result_text = await execute_tool(block.name, block.input)
         tool_results.append({
             "type": "tool_result",
