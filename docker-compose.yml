@@ -16,6 +16,10 @@ services:
       - GPU_INFERENCE_IMAGE=${GPU_INFERENCE_IMAGE:-veltrus-intelligence-gpu:latest}
       - DEBUG=false
       - SHOPIFY_WEBHOOK_SECRET=${SHOPIFY_WEBHOOK_SECRET:-}
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - META_PIXEL_ID=${META_PIXEL_ID:-}
+      - META_ACCESS_TOKEN=${META_ACCESS_TOKEN:-}
+      - META_TEST_EVENT_CODE=${META_TEST_EVENT_CODE:-}
     deploy:
       replicas: 1
       restart_policy:

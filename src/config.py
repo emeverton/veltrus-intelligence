@@ -16,6 +16,10 @@ class Settings(BaseSettings):
     gpu_inference_image: str = "veltrus-intelligence-gpu:latest"
     gpu_llm_base_url: str = ""
     shopify_webhook_secret: str = ""
+    sentry_dsn: str = ""
+    meta_pixel_id: str = ""
+    meta_access_token: str = ""
+    meta_test_event_code: str = ""
 
     class Config:
         env_file = ".env"
