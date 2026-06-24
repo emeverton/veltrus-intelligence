@@ -24,23 +24,39 @@ docker exec -w /app $(docker ps -q -f name=intelligence_intelligence_api) alembi
 - Configuração via pydantic-settings (não hardcodar valores)
 - NUNCA commitar `.env`
 
+## Shopify Webhooks (Briefing #8)
+- Endpoint: `POST /webhooks/shopify/orders/paid` — HMAC sobre **bytes crus** (`await request.body()` antes de `json.loads`)
+- Idempotência: `ON CONFLICT (shopify_order_id) DO NOTHING` — Shopify retenta 3x sem 200
+- **`SHOPIFY_WEBHOOK_SECRET` vazio aceita requests sem verificação (dev/smoke test)**
+- **Em produção o secret é OBRIGATÓRIO** — sem ele, qualquer POST no endpoint é aceito
+- Processamento async via `asyncio.create_task` — responder 200 em < 1s
+
 ## NATS JetStream
 - Streams devem ser criados via `ensure_attribution_stream()` com `StreamConfig` no lifespan da aplicação, **antes** de qualquer `publish()` ou `subscribe()`
 - NUNCA assumir que o stream existe — `js.publish()` lança `NoStreamResponseError` se o stream não foi criado
 
-## Apache AGE (Revenue Graph)
+## Apache AGE (Revenue + Creative Graph)
 - AGE **NÃO** vai no postgres compartilhado (n8n, Evolution API) — container separado `intelligence_graphdb` na stack intelligence
 - `asyncpg` **NÃO** funciona com `agtype` (tipo customizado do AGE) — queries AGE usam `psycopg2` síncrono via `asyncio.to_thread()`
-- Build da imagem graphdb compila AGE do source (~5-8 min na 1ª vez) — aguardar container Running antes de smoke tests
+- Padrões Cypher obrigatórios: `MERGE + SET` (sem `ON CREATE SET`), props de edge via `SET` após `MERGE`, `ORDER BY sum(...)` (sem alias)
+- Build graphdb: `flex` + `bison` obrigatórios; confirmar com `docker build --no-cache` se dúvida de cache
 - `intelligence_graphdb` é acesso interno apenas — sem labels Traefik
+
+## Embeddings (Creative Graph)
+- `fastembed` ONNX CPU — modelo `all-MiniLM-L6-v2`, 384-dim
+- Qdrant collection: `creative_embeddings`
+- API memory limit: **768M** → **1G** (Briefing #5: Prophet + pandas)
+- `test_embed_produces_384_dims` roda fastembed **real** — deve passar antes de merge
 
 ## Camadas (briefings)
 - Briefing #1: Identity Graph (Postgres + Union-Find) — concluído
 - Briefing #2: Attribution Engine (4 modelos + Shapley NATS) — concluído
-- Briefing #3: Revenue Graph (Apache AGE + graph sync) — em andamento
-- Briefing #4: Creative Graph + Qdrant embeddings (Vast.ai) — não implementar antes
-- Briefing #5: Agent Layer (LangGraph + Claude API)
+- Briefing #3: Revenue Graph (Apache AGE + graph sync) — concluído
+- Briefing #4: Creative Graph + Qdrant embeddings (CPU) — em andamento
+- Briefing #5: Agent Layer (LangGraph + Claude API) + GPU Vast.ai
 - Briefing #6: AI Modalities (FLUX, Wan2.1, Kokoro, Hunyuan3D via Vast.ai)
+- Briefing #7: Lazy loading + Vast.ai + Qwen dual-mode LLM
+- Briefing #8: Shopify webhook ingestion (orders/paid → identity → attribution → graph)
 
 ## Migrations (produção)
 - Rodar **dentro do container** após deploy: `alembic upgrade head`
