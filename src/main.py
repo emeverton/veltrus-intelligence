@@ -9,6 +9,7 @@ from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
 
 from src.api.health import router as health_router
 from src.api.v1 import (
+    admin,
     agents,
     analytics,
     attribution,
@@ -101,3 +102,4 @@ app.include_router(analytics.router, prefix="/api/v1/analytics", tags=["analytic
 app.include_router(
     integrations.router, prefix="/api/v1/integrations", tags=["integrations"]
 )
+app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])

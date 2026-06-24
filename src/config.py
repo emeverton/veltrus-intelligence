@@ -20,6 +20,11 @@ class Settings(BaseSettings):
     meta_pixel_id: str = ""
     meta_access_token: str = ""
     meta_test_event_code: str = ""
+    admin_api_key: str = ""
+    google_ads_developer_token: str = ""
+    google_ads_client_id: str = ""
+    google_ads_client_secret: str = ""
+    google_ads_refresh_token: str = ""
 
     class Config:
         env_file = ".env"

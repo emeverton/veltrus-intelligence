@@ -39,6 +39,9 @@ async def process_shopify_order(order: dict) -> None:
 
 
 async def _process_shopify_order_inner(order: dict) -> None:
+    shop_domain = order.pop("_shop_domain", "")
+    store = order.pop("_store", None)
+
     shopify_order_id = str(order.get("id", ""))
     if not shopify_order_id:
         logger.error("Ordem sem ID — ignorando")
@@ -66,7 +69,9 @@ async def _process_shopify_order_inner(order: dict) -> None:
                 "Order %s has no identity signals (no email/phone)",
                 shopify_order_id,
             )
-            await _save_order_record(session, order, shopify_order_id, None, None)
+            await _save_order_record(
+                session, order, shopify_order_id, None, None, shop_domain=shop_domain
+            )
             await session.commit()
             return
 
@@ -123,22 +128,46 @@ async def _process_shopify_order_inner(order: dict) -> None:
             conversion_id,
             channel=channel,
             utms=utms,
+            shop_domain=shop_domain,
         )
         await session.commit()
 
     if profile_id and conversion_id:
+        from src.config import settings as cfg
         from src.integrations.meta_capi import send_purchase_event
 
-        asyncio.create_task(
-            send_purchase_event(
-                shopify_order_id=shopify_order_id,
-                email=order.get("email"),
-                phone=order.get("phone") or order.get("billing_address", {}).get("phone"),
-                revenue=revenue,
-                currency=currency,
-                event_source_url=order.get("order_status_url"),
+        pixel_id = (store.meta_pixel_id if store else None) or cfg.meta_pixel_id
+        access_token = (store.meta_access_token if store else None) or cfg.meta_access_token
+        test_code = (store.meta_test_event_code if store else None) or cfg.meta_test_event_code
+
+        if pixel_id and access_token:
+            asyncio.create_task(
+                send_purchase_event(
+                    shopify_order_id=shopify_order_id,
+                    email=order.get("email"),
+                    phone=order.get("phone") or order.get("billing_address", {}).get("phone"),
+                    revenue=revenue,
+                    currency=currency,
+                    event_source_url=order.get("order_status_url"),
+                    pixel_id_override=pixel_id,
+                    access_token_override=access_token,
+                    test_event_code_override=test_code,
+                )
             )
-        )
+
+        if utms.get("gclid") and store and store.google_ads_customer_id:
+            from src.integrations.google_ads import upload_conversion
+
+            asyncio.create_task(
+                upload_conversion(
+                    gclid=utms["gclid"],
+                    customer_id=store.google_ads_customer_id,
+                    conversion_action=store.google_ads_conversion_action or "",
+                    conversion_value=revenue,
+                    currency=currency,
+                )
+            )
+
         asyncio.create_task(
             _compute_attribution(profile_id, conversion_id, revenue, currency)
         )
@@ -233,17 +262,18 @@ async def _save_order_record(
     conversion_id,
     channel: str | None = None,
     utms: dict | None = None,
+    shop_domain: str | None = None,
 ) -> None:
     utms = utms or {}
     await session.execute(
         sql_text("""
             INSERT INTO shopify_orders
-                (id, shopify_order_id, profile_id, conversion_id,
+                (id, shopify_order_id, shop_domain, profile_id, conversion_id,
                  email, phone, total_price, currency,
                  utm_source, utm_medium, utm_campaign, gclid, fbclid,
                  channel, referring_site, line_items, raw_payload, processing_status)
             VALUES
-                (:id, :shopify_order_id, :profile_id, :conversion_id,
+                (:id, :shopify_order_id, :shop_domain, :profile_id, :conversion_id,
                  :email, :phone, :total_price, :currency,
                  :utm_source, :utm_medium, :utm_campaign, :gclid, :fbclid,
                  :channel, :referring_site,
@@ -254,6 +284,7 @@ async def _save_order_record(
         {
             "id": str(uuid.uuid4()),
             "shopify_order_id": shopify_order_id,
+            "shop_domain": shop_domain or None,
             "profile_id": str(profile_id) if profile_id else None,
             "conversion_id": str(conversion_id) if conversion_id else None,
             "email": order.get("email"),

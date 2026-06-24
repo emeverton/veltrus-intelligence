@@ -80,11 +80,11 @@ async def health_detailed():
                 )
             )
             table_count = result.scalar()
-        schema_status = "ok" if table_count >= 12 else "degraded"
+        schema_status = "ok" if table_count >= 14 else "degraded"
         checks["schema"] = {
             "status": schema_status,
             "tables": table_count,
-            "expected": 12,
+            "expected": 14,
         }
         if schema_status != "ok":
             all_ok = False
