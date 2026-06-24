@@ -24,6 +24,13 @@ docker exec -w /app $(docker ps -q -f name=intelligence_intelligence_api) alembi
 - Configuração via pydantic-settings (não hardcodar valores)
 - NUNCA commitar `.env`
 
+## Shopify Webhooks (Briefing #8)
+- Endpoint: `POST /webhooks/shopify/orders/paid` — HMAC sobre **bytes crus** (`await request.body()` antes de `json.loads`)
+- Idempotência: `ON CONFLICT (shopify_order_id) DO NOTHING` — Shopify retenta 3x sem 200
+- **`SHOPIFY_WEBHOOK_SECRET` vazio aceita requests sem verificação (dev/smoke test)**
+- **Em produção o secret é OBRIGATÓRIO** — sem ele, qualquer POST no endpoint é aceito
+- Processamento async via `asyncio.create_task` — responder 200 em < 1s
+
 ## NATS JetStream
 - Streams devem ser criados via `ensure_attribution_stream()` com `StreamConfig` no lifespan da aplicação, **antes** de qualquer `publish()` ou `subscribe()`
 - NUNCA assumir que o stream existe — `js.publish()` lança `NoStreamResponseError` se o stream não foi criado
@@ -48,6 +55,8 @@ docker exec -w /app $(docker ps -q -f name=intelligence_intelligence_api) alembi
 - Briefing #4: Creative Graph + Qdrant embeddings (CPU) — em andamento
 - Briefing #5: Agent Layer (LangGraph + Claude API) + GPU Vast.ai
 - Briefing #6: AI Modalities (FLUX, Wan2.1, Kokoro, Hunyuan3D via Vast.ai)
+- Briefing #7: Lazy loading + Vast.ai + Qwen dual-mode LLM
+- Briefing #8: Shopify webhook ingestion (orders/paid → identity → attribution → graph)
 
 ## Migrations (produção)
 - Rodar **dentro do container** após deploy: `alembic upgrade head`

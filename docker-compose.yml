@@ -15,6 +15,7 @@ services:
       - HF_TOKEN=${HF_TOKEN}
       - GPU_INFERENCE_IMAGE=${GPU_INFERENCE_IMAGE:-veltrus-intelligence-gpu:latest}
       - DEBUG=false
+      - SHOPIFY_WEBHOOK_SECRET=${SHOPIFY_WEBHOOK_SECRET:-}
     deploy:
       replicas: 1
       restart_policy:

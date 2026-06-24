@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     hf_token: str = ""
     gpu_inference_image: str = "veltrus-intelligence-gpu:latest"
     gpu_llm_base_url: str = ""
+    shopify_webhook_secret: str = ""
 
     class Config:
         env_file = ".env"
