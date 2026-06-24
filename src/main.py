@@ -1,12 +1,15 @@
 import asyncio
 from contextlib import asynccontextmanager
 import logging
+import os
 
 import sentry_sdk
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
 
+from src.api.dashboard import router as dashboard_router
 from src.api.health import router as health_router
 from src.api.v1 import (
     admin,
@@ -89,6 +92,11 @@ app = FastAPI(
     redoc_url=None,
     lifespan=lifespan,
 )
+
+static_dir = os.path.join(os.path.dirname(__file__), "static")
+os.makedirs(static_dir, exist_ok=True)
+app.mount("/static", StaticFiles(directory=static_dir), name="static")
+app.include_router(dashboard_router)
 
 app.include_router(health_router)
 app.include_router(identity.router, prefix="/api/v1/identity", tags=["identity"])
