@@ -30,6 +30,18 @@ docker exec -w /app $(docker ps -q -f name=intelligence_intelligence_api) alembi
 - **`SHOPIFY_WEBHOOK_SECRET` vazio aceita requests sem verificação (dev/smoke test)**
 - **Em produção o secret é OBRIGATÓRIO** — sem ele, qualquer POST no endpoint é aceito
 - Processamento async via `asyncio.create_task` — responder 200 em < 1s
+- Setup loja: `scripts/setup-shopify-webhook.sh` (Shopify CLI → ORDERS_PAID webhook)
+
+## Observability (Briefing #9)
+- Sentry: `sentry_sdk.init()` só se `SENTRY_DSN` preenchido — `send_default_pii=False`
+- Health: `GET /health/detailed` — Postgres, Qdrant, NATS, GraphDB, schema (12 tabelas)
+- Alerta n8n: ping `/health/detailed` a cada 5 min (workflow manual no VPS)
+
+## Meta CAPI (Briefing #9)
+- `send_purchase_event()` — SHA256 de email/phone, fire-and-forget após conversão Shopify
+- `event_id`: `shopify_{order_id}` para deduplicação browser ↔ server
+- `META_TEST_EVENT_CODE` obrigatório em testes — sem ele Meta computa conversão real
+- **Nunca logar PII em texto claro** — mascarar (`email[:3] + "***"`)
 
 ## NATS JetStream
 - Streams devem ser criados via `ensure_attribution_stream()` com `StreamConfig` no lifespan da aplicação, **antes** de qualquer `publish()` ou `subscribe()`

@@ -127,6 +127,18 @@ async def _process_shopify_order_inner(order: dict) -> None:
         await session.commit()
 
     if profile_id and conversion_id:
+        from src.integrations.meta_capi import send_purchase_event
+
+        asyncio.create_task(
+            send_purchase_event(
+                shopify_order_id=shopify_order_id,
+                email=order.get("email"),
+                phone=order.get("phone") or order.get("billing_address", {}).get("phone"),
+                revenue=revenue,
+                currency=currency,
+                event_source_url=order.get("order_status_url"),
+            )
+        )
         asyncio.create_task(
             _compute_attribution(profile_id, conversion_id, revenue, currency)
         )

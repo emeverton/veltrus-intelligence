@@ -2,16 +2,42 @@ import asyncio
 from contextlib import asynccontextmanager
 import logging
 
+import sentry_sdk
 from fastapi import FastAPI
+from sentry_sdk.integrations.fastapi import FastApiIntegration
+from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
 
 from src.api.health import router as health_router
-from src.api.v1 import agents, analytics, attribution, creatives, generate, graphs, identity, webhooks
+from src.api.v1 import (
+    agents,
+    analytics,
+    attribution,
+    creatives,
+    generate,
+    graphs,
+    identity,
+    integrations,
+    webhooks,
+)
 from src.agents.worker import run_agent_worker
 from src.attribution.worker import run_worker
 from src.config import settings
 from src.nats_client import close_nats, ensure_agents_stream, ensure_attribution_stream
 
 logger = logging.getLogger(__name__)
+
+if settings.sentry_dsn:
+    sentry_sdk.init(
+        dsn=settings.sentry_dsn,
+        integrations=[
+            FastApiIntegration(transaction_style="url"),
+            SqlalchemyIntegration(),
+        ],
+        traces_sample_rate=0.1,
+        environment="production",
+        release="veltrus-intelligence@0.8.0",
+        send_default_pii=False,
+    )
 
 
 async def _run_worker_safe() -> None:
@@ -57,7 +83,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Veltrus Intelligence API",
-    version="0.2.0",
+    version="0.8.0",
     docs_url="/docs" if settings.debug else None,
     redoc_url=None,
     lifespan=lifespan,
@@ -72,3 +98,6 @@ app.include_router(agents.router, prefix="/api/v1/agents", tags=["agents"])
 app.include_router(generate.router, prefix="/api/v1/generate", tags=["generate"])
 app.include_router(webhooks.router, prefix="/webhooks", tags=["webhooks"])
 app.include_router(analytics.router, prefix="/api/v1/analytics", tags=["analytics"])
+app.include_router(
+    integrations.router, prefix="/api/v1/integrations", tags=["integrations"]
+)
