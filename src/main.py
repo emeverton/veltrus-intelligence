@@ -5,7 +5,7 @@ import logging
 from fastapi import FastAPI
 
 from src.api.health import router as health_router
-from src.api.v1 import agents, attribution, creatives, generate, graphs, identity
+from src.api.v1 import agents, analytics, attribution, creatives, generate, graphs, identity, webhooks
 from src.agents.worker import run_agent_worker
 from src.attribution.worker import run_worker
 from src.config import settings
@@ -70,3 +70,5 @@ app.include_router(graphs.router, prefix="/api/v1/graphs", tags=["graphs"])
 app.include_router(creatives.router, prefix="/api/v1/creatives", tags=["creatives"])
 app.include_router(agents.router, prefix="/api/v1/agents", tags=["agents"])
 app.include_router(generate.router, prefix="/api/v1/generate", tags=["generate"])
+app.include_router(webhooks.router, prefix="/webhooks", tags=["webhooks"])
+app.include_router(analytics.router, prefix="/api/v1/analytics", tags=["analytics"])
