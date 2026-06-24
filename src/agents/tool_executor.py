@@ -53,6 +53,51 @@ async def execute_tool(tool_name: str, tool_input: dict) -> str:
                 )
                 return resp.text
 
+        if tool_name == "generate_image":
+            from src.gpu.generate_client import generate_image
+
+            result = await generate_image(
+                prompt=tool_input["prompt"],
+                width=tool_input.get("width", 768),
+                height=tool_input.get("height", 768),
+            )
+            return json.dumps(
+                {
+                    "status": result.get("status"),
+                    "format": result.get("format"),
+                    "width": result.get("width"),
+                    "height": result.get("height"),
+                    "data_base64": "[IMAGE_BASE64_OMITTED_FROM_CONTEXT]",
+                    "note": "Imagem gerada com sucesso. Disponível via /api/v1/generate/jobs/{job_id}",
+                },
+                ensure_ascii=False,
+            )
+
+        if tool_name == "synthesize_voice":
+            from src.voice.kokoro import synthesize_async
+
+            result = await synthesize_async(
+                text=tool_input["text"],
+                voice=tool_input.get("voice", "af"),
+                speed=tool_input.get("speed", 1.0),
+            )
+            return json.dumps(
+                {
+                    "status": "ok",
+                    "format": result["format"],
+                    "text_length": result["text_length"],
+                    "data_base64": "[AUDIO_BASE64_OMITTED_FROM_CONTEXT]",
+                    "note": "Áudio sintetizado com sucesso.",
+                },
+                ensure_ascii=False,
+            )
+
+        if tool_name == "gpu_status":
+            from src.gpu.generate_client import gpu_health
+
+            result = await gpu_health()
+            return json.dumps(result, ensure_ascii=False)
+
         return json.dumps({"error": f"Tool '{tool_name}' not implemented"})
 
     except Exception as e:

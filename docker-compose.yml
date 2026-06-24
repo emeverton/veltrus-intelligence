@@ -10,6 +10,8 @@ services:
       - QDRANT_PORT=6333
       - NATS_URL=nats://intelligence_nats:4222
       - GRAPH_DB_URL=postgresql://graphuser:${GRAPH_DB_PASSWORD}@intelligence_graphdb:5432/revenue_graph
+      - VASTAI_API_KEY=${VASTAI_API_KEY}
+      - HF_TOKEN=${HF_TOKEN}
       - DEBUG=false
     deploy:
       replicas: 1
