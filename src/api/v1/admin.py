@@ -151,3 +151,65 @@ async def create_tray_store(
     )
     await session.commit()
     return {"seller_id": payload.seller_id, "created": True}
+
+
+class NuvemshopStoreCreate(BaseModel):
+    store_id: str
+    display_name: Optional[str] = None
+    api_key: str
+    meta_pixel_id: Optional[str] = None
+    meta_access_token: Optional[str] = None
+    google_ads_customer_id: Optional[str] = None
+
+
+@router.get("/nuvemshop-stores")
+async def list_nuvemshop_stores(
+    session: AsyncSession = Depends(get_session),
+    _: None = Depends(require_admin_key),
+):
+    result = await session.execute(
+        sql_text("""
+            SELECT store_id, display_name, meta_pixel_id, google_ads_customer_id,
+                   active, created_at
+            FROM nuvemshop_stores
+            ORDER BY created_at DESC
+        """)
+    )
+    return [dict(r._mapping) for r in result.fetchall()]
+
+
+@router.post("/nuvemshop-stores", status_code=201)
+async def create_nuvemshop_store(
+    payload: NuvemshopStoreCreate,
+    session: AsyncSession = Depends(get_session),
+    _: None = Depends(require_admin_key),
+):
+    import uuid
+
+    await session.execute(
+        sql_text("""
+            INSERT INTO nuvemshop_stores
+                (id, store_id, display_name, api_key, meta_pixel_id,
+                 meta_access_token, google_ads_customer_id)
+            VALUES
+                (:id, :store_id, :display_name, :api_key, :meta_pixel_id,
+                 :meta_access_token, :google_ads_customer_id)
+            ON CONFLICT (store_id) DO UPDATE SET
+              api_key = EXCLUDED.api_key,
+              display_name = EXCLUDED.display_name,
+              meta_pixel_id = EXCLUDED.meta_pixel_id,
+              meta_access_token = EXCLUDED.meta_access_token,
+              google_ads_customer_id = EXCLUDED.google_ads_customer_id
+        """),
+        {
+            "id": str(uuid.uuid4()),
+            "store_id": payload.store_id,
+            "display_name": payload.display_name,
+            "api_key": payload.api_key,
+            "meta_pixel_id": payload.meta_pixel_id,
+            "meta_access_token": payload.meta_access_token,
+            "google_ads_customer_id": payload.google_ads_customer_id,
+        },
+    )
+    await session.commit()
+    return {"store_id": payload.store_id, "created": True}

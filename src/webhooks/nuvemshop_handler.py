@@ -1,6 +1,6 @@
 """
-Handler de ordens Tray Commerce.
-Reutiliza o mesmo pipeline identity → attribution → graph do Shopify.
+Handler de ordens Nuvemshop.
+Reutiliza o mesmo pipeline identity → attribution → graph.
 """
 import asyncio
 import json
@@ -17,124 +17,75 @@ from src.database import AsyncSessionFactory
 from src.graphs.revenue_graph import sync_attribution_to_graph
 from src.identity.resolver import resolve as resolve_identity
 from src.nats_client import publish
-from src.webhooks.tray_parser import (
-    determine_tray_channel,
-    extract_tray_order_id,
-    extract_tray_revenue,
-    extract_tray_seller_id,
-    extract_tray_signals,
-    extract_tray_utms,
+from src.webhooks.nuvemshop_parser import (
+    determine_nuvemshop_channel,
+    extract_nuvemshop_order_id,
+    extract_nuvemshop_revenue,
+    extract_nuvemshop_signals,
+    extract_nuvemshop_store_id,
+    extract_nuvemshop_utms,
 )
+from src.webhooks.tray_handler import check_usage_limit
 
 logger = logging.getLogger(__name__)
 SHAPLEY_SUBJECT = "attribution.shapley.compute"
-FREE_LIMIT = 100
 
 
-async def check_usage_limit(
-    seller_id: str, source: str = "tray"
-) -> tuple[bool, int]:
-    """
-    Verifica se a loja atingiu o limite mensal de ordens.
-    Retorna (dentro_do_limite, contagem_atual).
-    """
-    async with AsyncSessionFactory() as session:
-        if source == "tray":
-            query = """
-                SELECT COUNT(*) FROM tray_orders
-                WHERE seller_id = :sid
-                  AND created_at >= DATE_TRUNC('month', NOW())
-            """
-        elif source == "nuvemshop":
-            query = """
-                SELECT COUNT(*) FROM nuvemshop_orders
-                WHERE store_id = :sid
-                  AND created_at >= DATE_TRUNC('month', NOW())
-            """
-        else:
-            query = """
-                SELECT COUNT(*) FROM shopify_orders
-                WHERE shop_domain = :sid
-                  AND created_at >= DATE_TRUNC('month', NOW())
-            """
-
-        result = await session.execute(sql_text(query), {"sid": seller_id})
-        count = result.scalar() or 0
-
-    return count < FREE_LIMIT, count
-
-
-async def process_tray_order(payload: dict, store: dict) -> None:
-    """Pipeline completo para uma ordem Tray. Idempotente via tray_order_id UNIQUE."""
+async def process_nuvemshop_order(payload: dict, store: dict) -> None:
     try:
-        await _process_tray_order_inner(payload, store)
+        await _process_nuvemshop_order_inner(payload, store)
     except Exception:
         logger.exception(
-            "Failed to process Tray order %s",
-            payload.get("order", {}).get("id"),
+            "Failed to process Nuvemshop order %s", payload.get("id")
         )
 
 
-async def _process_tray_order_inner(payload: dict, store: dict) -> None:
-    tray_order_id = extract_tray_order_id(payload)
-    seller_id = extract_tray_seller_id(payload)
+async def _process_nuvemshop_order_inner(payload: dict, store: dict) -> None:
+    order_id = extract_nuvemshop_order_id(payload)
+    store_id = extract_nuvemshop_store_id(payload)
 
-    if not tray_order_id:
-        logger.error("Ordem Tray sem ID — ignorando")
+    if not order_id:
+        logger.error("Ordem Nuvemshop sem ID — ignorando")
         return
 
-    logger.info("Processing Tray order %s from seller %s", tray_order_id, seller_id)
+    logger.info("Processing Nuvemshop order %s from store %s", order_id, store_id)
 
     async with AsyncSessionFactory() as session:
         existing = await session.execute(
-            sql_text("SELECT id FROM tray_orders WHERE tray_order_id = :oid"),
-            {"oid": tray_order_id},
+            sql_text("SELECT id FROM nuvemshop_orders WHERE nuvemshop_order_id = :oid"),
+            {"oid": order_id},
         )
         if existing.fetchone():
-            logger.info("Tray order %s already processed", tray_order_id)
+            logger.info("Nuvemshop order %s already processed", order_id)
             return
 
-        within_limit, current_count = await check_usage_limit(seller_id, "tray")
+        within_limit, current_count = await check_usage_limit(store_id, "nuvemshop")
         if not within_limit:
             logger.warning(
-                "Tray seller %s exceeded monthly limit (%s orders) — skipping attribution",
-                seller_id,
+                "Nuvemshop store %s exceeded limit (%s) — skipping attribution",
+                store_id,
                 current_count,
             )
-            await _save_tray_order(
-                session,
-                payload,
-                tray_order_id,
-                seller_id,
-                None,
-                None,
-                None,
-                "limit_exceeded",
+            await _save_nuvemshop_order(
+                session, payload, order_id, store_id, None, None, None, "limit_exceeded"
             )
             await session.commit()
             return
 
-        signals = extract_tray_signals(payload)
+        signals = extract_nuvemshop_signals(payload)
         if not signals:
-            logger.warning("Tray order %s sem sinais de identidade", tray_order_id)
-            await _save_tray_order(
-                session,
-                payload,
-                tray_order_id,
-                seller_id,
-                None,
-                None,
-                None,
-                "no_signals",
+            logger.warning("Nuvemshop order %s sem sinais de identidade", order_id)
+            await _save_nuvemshop_order(
+                session, payload, order_id, store_id, None, None, None, "no_signals"
             )
             await session.commit()
             return
 
-        utms = extract_tray_utms(payload)
-        channel = determine_tray_channel(utms)
-        revenue, currency = extract_tray_revenue(payload)
+        utms = extract_nuvemshop_utms(payload)
+        channel = determine_nuvemshop_channel(utms)
+        revenue, currency = extract_nuvemshop_revenue(payload)
 
-        identity_result = await resolve_identity(session, signals, source="tray")
+        identity_result = await resolve_identity(session, signals, source="nuvemshop")
         profile_id = UUID(identity_result["profile_id"])
 
         if any([utms.get("utm_source"), utms.get("gclid"), utms.get("fbclid")]):
@@ -148,7 +99,7 @@ async def _process_tray_order_inner(payload: dict, store: dict) -> None:
                 medium=utms.get("utm_medium"),
                 gclid=utms.get("gclid"),
                 fbclid=utms.get("fbclid"),
-                metadata={"tray_order_id": tray_order_id, "seller_id": seller_id},
+                metadata={"nuvemshop_order_id": order_id, "store_id": store_id},
             )
 
         conversion = await attr_repo.create_conversion(
@@ -157,38 +108,29 @@ async def _process_tray_order_inner(payload: dict, store: dict) -> None:
             revenue=revenue,
             currency=currency,
             metadata={
-                "tray_order_id": tray_order_id,
-                "seller_id": seller_id,
+                "nuvemshop_order_id": order_id,
+                "store_id": store_id,
                 "channel": channel,
             },
         )
 
-        await _save_tray_order(
-            session,
-            payload,
-            tray_order_id,
-            seller_id,
-            profile_id,
-            conversion.id,
-            channel,
-            "done",
+        await _save_nuvemshop_order(
+            session, payload, order_id, store_id, profile_id, conversion.id, channel, "done"
         )
         await session.commit()
 
     asyncio.create_task(
-        _compute_tray_attribution(profile_id, conversion.id, revenue, currency)
+        _compute_nuvemshop_attribution(profile_id, conversion.id, revenue, currency)
     )
 
     if store.get("meta_pixel_id") and store.get("meta_access_token"):
         from src.integrations.meta_capi import send_purchase_event
 
-        order = payload.get("order", {})
-        customer = order.get("customer", {})
         asyncio.create_task(
             send_purchase_event(
-                shopify_order_id=f"tray_{tray_order_id}",
-                email=customer.get("email"),
-                phone=customer.get("phone"),
+                shopify_order_id=f"nuvemshop_{order_id}",
+                email=payload.get("contact_email"),
+                phone=payload.get("contact_phone"),
                 revenue=revenue,
                 currency=currency,
                 pixel_id_override=store.get("meta_pixel_id"),
@@ -198,23 +140,17 @@ async def _process_tray_order_inner(payload: dict, store: dict) -> None:
         )
 
 
-async def _compute_tray_attribution(
-    profile_id: UUID,
-    conversion_id: UUID,
-    revenue: float,
-    currency: str,
+async def _compute_nuvemshop_attribution(
+    profile_id: UUID, conversion_id: UUID, revenue: float, currency: str
 ) -> None:
-    """Calcula atribuição e sincroniza ao grafo."""
     try:
         async with AsyncSessionFactory() as session:
             touchpoints_db = await attr_repo.get_touchpoints_for_profile(
                 session, profile_id
             )
             conversion_time = datetime.now(timezone.utc)
-
             if not touchpoints_db:
                 return
-
             tp_list = [
                 Touchpoint(
                     channel=t.channel,
@@ -224,7 +160,6 @@ async def _compute_tray_attribution(
                 for t in touchpoints_db
             ]
             sync_results = run_all_sync_models(tp_list, conversion_time)
-
             for model_name, credits in sync_results.items():
                 await attr_repo.save_results(
                     session, conversion_id, profile_id, model_name, credits, revenue
@@ -265,49 +200,41 @@ async def _compute_tray_attribution(
             },
         )
     except Exception as e:
-        logger.error("Tray attribution failed: %s", e)
+        logger.error("Nuvemshop attribution failed: %s", e)
 
 
-async def _save_tray_order(
-    session,
-    payload,
-    tray_order_id,
-    seller_id,
-    profile_id,
-    conversion_id,
-    channel,
-    status,
+async def _save_nuvemshop_order(
+    session, payload, order_id, store_id, profile_id, conversion_id, channel, status
 ) -> None:
-    order = payload.get("order", {})
-    customer = order.get("customer", {})
     await session.execute(
         sql_text("""
-            INSERT INTO tray_orders
-                (id, tray_order_id, seller_id, profile_id, conversion_id,
+            INSERT INTO nuvemshop_orders
+                (id, nuvemshop_order_id, store_id, profile_id, conversion_id,
                  email, phone, total_price, currency, channel, processing_status, raw_payload)
             VALUES
-                (:id, :tray_order_id, :seller_id, :profile_id, :conversion_id,
+                (:id, :order_id, :store_id, :profile_id, :conversion_id,
                  :email, :phone, :total_price, :currency, :channel, :status,
                  CAST(:raw_payload AS jsonb))
-            ON CONFLICT (tray_order_id) DO NOTHING
+            ON CONFLICT (nuvemshop_order_id) DO NOTHING
         """),
         {
             "id": str(uuid.uuid4()),
-            "tray_order_id": tray_order_id,
-            "seller_id": seller_id,
+            "order_id": order_id,
+            "store_id": store_id,
             "profile_id": str(profile_id) if profile_id else None,
             "conversion_id": str(conversion_id) if conversion_id else None,
-            "email": customer.get("email"),
-            "phone": customer.get("phone"),
-            "total_price": float(order.get("value") or "0"),
-            "currency": "BRL",
+            "email": payload.get("contact_email"),
+            "phone": payload.get("contact_phone"),
+            "total_price": float(payload.get("total") or "0"),
+            "currency": (payload.get("currency") or "BRL").upper(),
             "channel": channel,
             "status": status,
             "raw_payload": json.dumps(
                 {
-                    "id": tray_order_id,
-                    "seller_id": seller_id,
-                    "status_id": order.get("status_id"),
+                    "id": order_id,
+                    "store_id": store_id,
+                    "status": payload.get("status"),
+                    "total": payload.get("total"),
                 }
             ),
         },

@@ -121,6 +121,7 @@ async def analytics_summary(
 async def usage_stats(
     shop_domain: Optional[str] = Query(default=None),
     seller_id: Optional[str] = Query(default=None),
+    store_id: Optional[str] = Query(default=None),
 ):
     """
     Retorna uso do mês corrente para uma loja.
@@ -152,13 +153,27 @@ async def usage_stats(
             )
             tray_count = r.scalar() or 0
 
-    total = shopify_count + tray_count
+        nuvemshop_count = 0
+        if store_id:
+            r = await session.execute(
+                sql_text("""
+                    SELECT COUNT(*) FROM nuvemshop_orders
+                    WHERE store_id = :store_id
+                      AND created_at >= DATE_TRUNC('month', NOW())
+                """),
+                {"store_id": store_id},
+            )
+            nuvemshop_count = r.scalar() or 0
+
+    total = shopify_count + tray_count + nuvemshop_count
     return {
         "period": "current_month",
         "shop_domain": shop_domain,
         "seller_id": seller_id,
+        "store_id": store_id,
         "shopify_orders": shopify_count,
         "tray_orders": tray_count,
+        "nuvemshop_orders": nuvemshop_count,
         "total_orders": total,
         "free_limit": 100,
         "within_limit": total < 100,

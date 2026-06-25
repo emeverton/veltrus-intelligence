@@ -12,6 +12,12 @@ from src.webhooks.hmac_verify import verify_shopify_hmac
 from src.webhooks.shopify_handler import process_shopify_order
 from src.webhooks.tray_handler import process_tray_order
 from src.webhooks.tray_parser import is_paid_order
+from src.webhooks.nuvemshop_handler import process_nuvemshop_order
+from src.webhooks.nuvemshop_parser import (
+    is_paid_order as is_nuvemshop_paid,
+    extract_nuvemshop_store_id,
+    extract_nuvemshop_order_id,
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -27,6 +33,21 @@ async def _get_tray_store(seller_id: str) -> dict | None:
                 WHERE seller_id = :seller_id AND active = true
             """),
             {"seller_id": seller_id},
+        )
+        row = result.fetchone()
+        return dict(row._mapping) if row else None
+
+
+async def _get_nuvemshop_store(store_id: str) -> dict | None:
+    async with AsyncSessionFactory() as session:
+        result = await session.execute(
+            sql_text("""
+                SELECT store_id, display_name, api_key,
+                       meta_pixel_id, meta_access_token, meta_test_event_code, active
+                FROM nuvemshop_stores
+                WHERE store_id = :store_id AND active = true
+            """),
+            {"store_id": store_id},
         )
         row = result.fetchone()
         return dict(row._mapping) if row else None
@@ -160,4 +181,47 @@ async def tray_orders_webhook(request: Request):
     logger.info("Tray webhook: seller=%s, order=%s", seller_id, order_id)
 
     asyncio.create_task(process_tray_order(payload, store))
+    return {"received": True, "processed": True, "order_id": str(order_id)}
+
+
+@router.post("/nuvemshop/orders")
+async def nuvemshop_orders_webhook(request: Request):
+    """
+    Webhook Nuvemshop (Tienda Nube).
+    Auth: Authorization: Token token=<api_key>
+    Processa apenas ordens com payment_status == 'paid'.
+    """
+    auth_header = request.headers.get("Authorization", "")
+    token = auth_header.replace("Token token=", "").strip()
+
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+
+    store_id = extract_nuvemshop_store_id(payload)
+    if not store_id:
+        raise HTTPException(status_code=400, detail="store_id ausente no payload")
+
+    store = await _get_nuvemshop_store(store_id)
+    if not store:
+        logger.warning("Nuvemshop store_id %s não cadastrado", store_id)
+        raise HTTPException(status_code=401, detail="Store not found")
+
+    if token != store["api_key"]:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+
+    if not is_nuvemshop_paid(payload):
+        status = payload.get("payment_status") or payload.get("status", "?")
+        logger.info("Nuvemshop order status %s — skipping", status)
+        return {
+            "received": True,
+            "processed": False,
+            "reason": f"status {status} is not paid",
+        }
+
+    order_id = extract_nuvemshop_order_id(payload)
+    logger.info("Nuvemshop webhook: store=%s, order=%s", store_id, order_id)
+
+    asyncio.create_task(process_nuvemshop_order(payload, store))
     return {"received": True, "processed": True, "order_id": str(order_id)}
