@@ -411,3 +411,121 @@ async def create_generic_store(
         "platform": payload.platform,
         "created": True,
     }
+
+
+class LojaIntegradaStoreCreate(BaseModel):
+    store_key: str
+    display_name: Optional[str] = None
+    api_key: str
+    meta_pixel_id: Optional[str] = None
+    meta_access_token: Optional[str] = None
+    google_ads_customer_id: Optional[str] = None
+
+
+class MoovinStoreCreate(BaseModel):
+    store_id: str
+    display_name: Optional[str] = None
+    api_key: str
+    meta_pixel_id: Optional[str] = None
+    meta_access_token: Optional[str] = None
+    google_ads_customer_id: Optional[str] = None
+
+
+@router.get("/loja-integrada-stores")
+async def list_li_stores(
+    session: AsyncSession = Depends(get_session),
+    _: None = Depends(require_admin_key),
+):
+    result = await session.execute(
+        sql_text("""
+            SELECT store_key, display_name, meta_pixel_id, active, created_at
+            FROM loja_integrada_stores
+            ORDER BY created_at DESC
+        """)
+    )
+    return [dict(r._mapping) for r in result.fetchall()]
+
+
+@router.post("/loja-integrada-stores", status_code=201)
+async def create_li_store(
+    payload: LojaIntegradaStoreCreate,
+    session: AsyncSession = Depends(get_session),
+    _: None = Depends(require_admin_key),
+):
+    import uuid
+
+    await session.execute(
+        sql_text("""
+            INSERT INTO loja_integrada_stores
+                (id, store_key, display_name, api_key, meta_pixel_id,
+                 meta_access_token, google_ads_customer_id)
+            VALUES (:id, :sk, :name, :key, :pixel, :token, :gads)
+            ON CONFLICT (store_key) DO UPDATE SET
+                api_key = EXCLUDED.api_key,
+                display_name = EXCLUDED.display_name,
+                meta_pixel_id = EXCLUDED.meta_pixel_id,
+                meta_access_token = EXCLUDED.meta_access_token,
+                google_ads_customer_id = EXCLUDED.google_ads_customer_id
+        """),
+        {
+            "id": str(uuid.uuid4()),
+            "sk": payload.store_key,
+            "name": payload.display_name,
+            "key": payload.api_key,
+            "pixel": payload.meta_pixel_id,
+            "token": payload.meta_access_token,
+            "gads": payload.google_ads_customer_id,
+        },
+    )
+    await session.commit()
+    return {"store_key": payload.store_key, "created": True}
+
+
+@router.get("/moovin-stores")
+async def list_moovin_stores(
+    session: AsyncSession = Depends(get_session),
+    _: None = Depends(require_admin_key),
+):
+    result = await session.execute(
+        sql_text("""
+            SELECT store_id, display_name, meta_pixel_id, active, created_at
+            FROM moovin_stores
+            ORDER BY created_at DESC
+        """)
+    )
+    return [dict(r._mapping) for r in result.fetchall()]
+
+
+@router.post("/moovin-stores", status_code=201)
+async def create_moovin_store(
+    payload: MoovinStoreCreate,
+    session: AsyncSession = Depends(get_session),
+    _: None = Depends(require_admin_key),
+):
+    import uuid
+
+    await session.execute(
+        sql_text("""
+            INSERT INTO moovin_stores
+                (id, store_id, display_name, api_key, meta_pixel_id,
+                 meta_access_token, google_ads_customer_id)
+            VALUES (:id, :sid, :name, :key, :pixel, :token, :gads)
+            ON CONFLICT (store_id) DO UPDATE SET
+                api_key = EXCLUDED.api_key,
+                display_name = EXCLUDED.display_name,
+                meta_pixel_id = EXCLUDED.meta_pixel_id,
+                meta_access_token = EXCLUDED.meta_access_token,
+                google_ads_customer_id = EXCLUDED.google_ads_customer_id
+        """),
+        {
+            "id": str(uuid.uuid4()),
+            "sid": payload.store_id,
+            "name": payload.display_name,
+            "key": payload.api_key,
+            "pixel": payload.meta_pixel_id,
+            "token": payload.meta_access_token,
+            "gads": payload.google_ads_customer_id,
+        },
+    )
+    await session.commit()
+    return {"store_id": payload.store_id, "created": True}
