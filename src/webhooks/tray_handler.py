@@ -45,6 +45,8 @@ async def check_usage_limit(
         "shopify": ("shopify_orders", "shop_domain"),
         "woocommerce": ("woocommerce_orders", "store_url"),
         "generic": ("generic_orders", "store_id"),
+        "loja_integrada": ("loja_integrada_orders", "store_key"),
+        "moovin": ("moovin_orders", "store_id"),
     }
     table, col = table_map.get(source, ("shopify_orders", "shop_domain"))
 

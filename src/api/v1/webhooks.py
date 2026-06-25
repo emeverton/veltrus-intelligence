@@ -34,6 +34,18 @@ from src.webhooks.woocommerce_parser import (
 )
 from src.webhooks.woocommerce_handler import process_woocommerce_order
 from src.webhooks.generic_handler import process_generic_order
+from src.webhooks.loja_integrada_parser import (
+    is_paid_order as li_is_paid,
+    extract_li_order_id,
+    extract_li_store_key,
+)
+from src.webhooks.loja_integrada_handler import process_li_order
+from src.webhooks.moovin_parser import (
+    is_paid_order as moovin_is_paid,
+    extract_moovin_order_id,
+    extract_moovin_store_id,
+)
+from src.webhooks.moovin_handler import process_moovin_order
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -443,3 +455,128 @@ async def generic_order_webhook(request: Request):
     )
     asyncio.create_task(process_generic_order(payload, store))
     return {"received": True, "processed": True, "order_id": str(payload.get("order_id"))}
+
+
+async def _get_li_store(store_key: str) -> dict | None:
+    async with AsyncSessionFactory() as session:
+        result = await session.execute(
+            sql_text("""
+                SELECT store_key, display_name, api_key,
+                       meta_pixel_id, meta_access_token, meta_test_event_code, active
+                FROM loja_integrada_stores
+                WHERE store_key = :sk AND active = true
+            """),
+            {"sk": store_key},
+        )
+        row = result.fetchone()
+        return dict(row._mapping) if row else None
+
+
+async def _get_moovin_store(store_id: str) -> dict | None:
+    async with AsyncSessionFactory() as session:
+        result = await session.execute(
+            sql_text("""
+                SELECT store_id, display_name, api_key,
+                       meta_pixel_id, meta_access_token, meta_test_event_code, active
+                FROM moovin_stores
+                WHERE store_id = :sid AND active = true
+            """),
+            {"sid": store_id},
+        )
+        row = result.fetchone()
+        return dict(row._mapping) if row else None
+
+
+@router.post("/loja-integrada/orders")
+@limiter.limit("120/minute")
+async def loja_integrada_webhook(request: Request):
+    """
+    Webhook Loja Integrada.
+    Auth: Authorization: chave <api_key>.
+    Situações processadas: 2=Aprovado, 3=Preparação, 4=Enviado, 5=Entregue.
+    """
+    auth = request.headers.get("Authorization", "")
+    api_key = auth.replace("chave ", "").strip()
+
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+
+    store_key = extract_li_store_key(payload, dict(request.headers))
+    if not store_key:
+        store_key = api_key
+
+    store = await _get_li_store(store_key)
+    if not store:
+        logger.warning("LI store_key %s não cadastrado", store_key)
+        raise HTTPException(status_code=401, detail="Store not found")
+
+    if api_key != store["api_key"]:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+
+    if not li_is_paid(payload):
+        situacao = payload.get("situacao", {})
+        return {
+            "received": True,
+            "processed": False,
+            "reason": f"situacao {situacao} not paid",
+        }
+
+    order_id = extract_li_order_id(payload)
+    logger.info("LI webhook: store=%s, order=%s", store_key, order_id)
+    asyncio.create_task(process_li_order(payload, store))
+    return {"received": True, "processed": True, "order_id": order_id}
+
+
+@router.post("/moovin/orders")
+@limiter.limit("120/minute")
+async def moovin_webhook(request: Request):
+    """
+    Webhook Moovin.
+    Auth: X-Store-Key ou Authorization: Token token=<api_key>.
+    ATENÇÃO: verificar payload real com Moovin antes de usar em produção.
+    """
+    api_key = (
+        request.headers.get("X-Store-Key")
+        or request.headers.get("Authorization", "").replace("Token token=", "").strip()
+        or ""
+    )
+
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+
+    store_id = extract_moovin_store_id(payload) or request.headers.get(
+        "X-Store-Id", ""
+    )
+
+    if not store_id:
+        raise HTTPException(
+            status_code=400,
+            detail="store_id não encontrado no payload ou header X-Store-Id",
+        )
+
+    store = await _get_moovin_store(store_id)
+    if not store:
+        logger.warning("Moovin store_id %s não cadastrado", store_id)
+        raise HTTPException(status_code=401, detail="Store not found")
+
+    if api_key != store["api_key"]:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+
+    if not moovin_is_paid(payload):
+        return {
+            "received": True,
+            "processed": False,
+            "reason": (
+                f"status not paid (status={payload.get('status')}; "
+                f"status_id={payload.get('status_id')})"
+            ),
+        }
+
+    order_id = extract_moovin_order_id(payload)
+    logger.info("Moovin webhook: store=%s, order=%s", store_id, order_id)
+    asyncio.create_task(process_moovin_order(payload, store))
+    return {"received": True, "processed": True, "order_id": order_id}
