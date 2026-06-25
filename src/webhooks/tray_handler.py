@@ -43,6 +43,8 @@ async def check_usage_limit(
         "nuvemshop": ("nuvemshop_orders", "store_id"),
         "vtex": ("vtex_orders", "account_name"),
         "shopify": ("shopify_orders", "shop_domain"),
+        "woocommerce": ("woocommerce_orders", "store_url"),
+        "generic": ("generic_orders", "store_id"),
     }
     table, col = table_map.get(source, ("shopify_orders", "shop_domain"))
 

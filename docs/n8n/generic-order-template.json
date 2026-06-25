@@ -1,0 +1,32 @@
+{
+  "name": "Generic Platform → Intelligence (TEMPLATE)",
+  "description": "Template para qualquer plataforma. Substituir GET_ORDERS_NODE pelo nó específico da plataforma.",
+  "_instructions": {
+    "1": "Duplicar este workflow no n8n",
+    "2": "Substituir o nó GET_ORDERS_NODE pelo nó HTTP da API da plataforma",
+    "3": "Ajustar o nó NORMALIZE_PAYLOAD com os campos corretos da API",
+    "4": "Configurar variáveis: STORE_ID, PLATFORM_NAME, INTELLIGENCE_GENERIC_KEY",
+    "5": "Cadastrar loja via POST /api/v1/admin/generic-stores antes de ativar",
+    "6": "Ativar o workflow"
+  },
+  "payload_contract": {
+    "store_id": "string — ID único cadastrado via POST /api/v1/admin/generic-stores",
+    "order_id": "string — ID único da ordem na plataforma",
+    "platform": "string — webflow | godaddy | wix | shopify | other",
+    "email": "string | null",
+    "phone": "string | null",
+    "revenue": "number — valor total em BRL (ou moeda definida em currency)",
+    "currency": "string — ISO 4217, default BRL",
+    "utm_source": "string | null",
+    "utm_medium": "string | null",
+    "utm_campaign": "string | null",
+    "gclid": "string | null",
+    "fbclid": "string | null"
+  },
+  "endpoint": "POST https://intelligence.ehos.com.br/webhooks/generic/order",
+  "auth_header": "X-Store-Key: <api_key from generic_stores>",
+  "n8n_env_vars": [
+    "WEBFLOW_SITE_ID — ID do site no Webflow Dashboard",
+    "INTELLIGENCE_GENERIC_KEY — api_key da loja genérica cadastrada via admin API"
+  ]
+}

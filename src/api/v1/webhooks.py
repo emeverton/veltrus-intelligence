@@ -26,6 +26,14 @@ from src.webhooks.vtex_parser import (
     extract_vtex_order_id,
     extract_vtex_account,
 )
+from src.webhooks.woocommerce_parser import (
+    verify_woocommerce_hmac,
+    is_paid_order as wc_is_paid,
+    extract_woocommerce_store_url,
+    extract_woocommerce_order_id,
+)
+from src.webhooks.woocommerce_handler import process_woocommerce_order
+from src.webhooks.generic_handler import process_generic_order
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -306,3 +314,132 @@ async def vtex_orders_webhook(request: Request):
         "order_id": order_id,
         "state": state,
     }
+
+
+async def _get_woocommerce_store(store_url: str) -> dict | None:
+    async with AsyncSessionFactory() as session:
+        result = await session.execute(
+            sql_text("""
+                SELECT store_url, display_name, webhook_secret,
+                       meta_pixel_id, meta_access_token, meta_test_event_code,
+                       google_ads_customer_id, google_ads_conversion_action, active
+                FROM woocommerce_stores
+                WHERE store_url = :url AND active = true
+            """),
+            {"url": store_url},
+        )
+        row = result.fetchone()
+        return dict(row._mapping) if row else None
+
+
+async def _resolve_woocommerce_store(store_url: str) -> dict | None:
+    url = store_url.rstrip("/").lower()
+    candidates = [url]
+    if not url.startswith("http"):
+        candidates.append(f"https://{url}")
+    if url.startswith("http://"):
+        candidates.append(url.replace("http://", "https://", 1))
+    for candidate in candidates:
+        store = await _get_woocommerce_store(candidate)
+        if store:
+            return store
+    return None
+
+
+@router.post("/woocommerce/orders")
+@limiter.limit("120/minute")
+async def woocommerce_orders_webhook(request: Request):
+    """
+    Webhook WooCommerce.
+    HMAC: base64(HMAC-SHA256) no header X-WC-Webhook-Signature.
+    DIFERENTE do Shopify (hex) — não reutilizar verify_shopify_hmac.
+    """
+    raw_body = await request.body()
+    signature = request.headers.get("X-WC-Webhook-Signature", "")
+    store_url = extract_woocommerce_store_url(dict(request.headers))
+
+    if not store_url:
+        raise HTTPException(status_code=400, detail="X-WC-Webhook-Source ausente")
+
+    store = await _resolve_woocommerce_store(store_url)
+    if not store:
+        logger.warning("WooCommerce store %s não cadastrado", store_url)
+        raise HTTPException(status_code=401, detail="Store not found")
+
+    if not verify_woocommerce_hmac(raw_body, store["webhook_secret"], signature):
+        raise HTTPException(status_code=401, detail="Invalid HMAC signature")
+
+    try:
+        order = json.loads(raw_body)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+
+    if not wc_is_paid(order):
+        status = order.get("status", "?")
+        return {
+            "received": True,
+            "processed": False,
+            "reason": f"status {status} not paid",
+        }
+
+    order_id = extract_woocommerce_order_id(order)
+    logger.info("WooCommerce webhook: store=%s, order=%s", store["store_url"], order_id)
+    asyncio.create_task(process_woocommerce_order(order, store))
+    return {"received": True, "processed": True, "order_id": order_id}
+
+
+async def _get_generic_store(store_id: str) -> dict | None:
+    async with AsyncSessionFactory() as session:
+        result = await session.execute(
+            sql_text("""
+                SELECT store_id, display_name, api_key, platform,
+                       meta_pixel_id, meta_access_token, meta_test_event_code,
+                       google_ads_customer_id, google_ads_conversion_action, active
+                FROM generic_stores
+                WHERE store_id = :sid AND active = true
+            """),
+            {"sid": store_id},
+        )
+        row = result.fetchone()
+        return dict(row._mapping) if row else None
+
+
+@router.post("/generic/order")
+@limiter.limit("120/minute")
+async def generic_order_webhook(request: Request):
+    """
+    Endpoint genérico para n8n / Make / Zapier.
+    Auth: X-Store-Key header com api_key da generic_stores.
+    """
+    api_key = request.headers.get("X-Store-Key", "")
+
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+
+    store_id = str(payload.get("store_id", ""))
+    if not store_id:
+        raise HTTPException(status_code=400, detail="store_id obrigatório no payload")
+
+    store = await _get_generic_store(store_id)
+    if not store:
+        raise HTTPException(status_code=401, detail="Store not found")
+    if api_key != store["api_key"]:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+
+    if not payload.get("order_id"):
+        raise HTTPException(status_code=400, detail="order_id obrigatório no payload")
+
+    revenue = float(payload.get("revenue", 0))
+    if revenue <= 0:
+        return {"received": True, "processed": False, "reason": "revenue <= 0"}
+
+    logger.info(
+        "Generic order: store=%s, platform=%s, order=%s",
+        store_id,
+        payload.get("platform"),
+        payload.get("order_id"),
+    )
+    asyncio.create_task(process_generic_order(payload, store))
+    return {"received": True, "processed": True, "order_id": str(payload.get("order_id"))}
