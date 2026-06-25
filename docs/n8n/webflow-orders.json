@@ -1,0 +1,120 @@
+{
+  "name": "Webflow → Intelligence (poll a cada 5min)",
+  "nodes": [
+    {
+      "name": "Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "parameters": {
+        "rule": { "interval": [{ "field": "minutes", "minutesInterval": 5 }] }
+      },
+      "position": [100, 300]
+    },
+    {
+      "name": "Get Webflow Orders",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.webflow.com/v2/sites/{{$env.WEBFLOW_SITE_ID}}/orders",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "webflowOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "status", "value": "unfulfilled" },
+            { "name": "limit", "value": "100" }
+          ]
+        }
+      },
+      "position": [300, 300]
+    },
+    {
+      "name": "Filter Paid",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.status }}",
+              "operation": "equals",
+              "value2": "unfulfilled"
+            }
+          ]
+        }
+      },
+      "position": [500, 300]
+    },
+    {
+      "name": "Normalize Payload",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "parameters": {
+        "values": {
+          "string": [
+            { "name": "store_id", "value": "={{$env.WEBFLOW_STORE_ID}}" },
+            { "name": "order_id", "value": "={{ $json.orderId }}" },
+            { "name": "platform", "value": "webflow" },
+            { "name": "email", "value": "={{ $json.customerInfo.email }}" },
+            { "name": "phone", "value": "={{ $json.customerInfo.phone || '' }}" },
+            { "name": "currency", "value": "BRL" },
+            { "name": "utm_source", "value": "={{ $json.metadata?.utm_source || '' }}" },
+            { "name": "utm_medium", "value": "={{ $json.metadata?.utm_medium || '' }}" },
+            { "name": "utm_campaign", "value": "={{ $json.metadata?.utm_campaign || '' }}" },
+            { "name": "gclid", "value": "={{ $json.metadata?.gclid || null }}" },
+            { "name": "fbclid", "value": "={{ $json.metadata?.fbclid || null }}" }
+          ],
+          "number": [
+            {
+              "name": "revenue",
+              "value": "={{ ($json.totals?.total?.unit || 0) / 100 }}"
+            }
+          ]
+        }
+      },
+      "position": [700, 300]
+    },
+    {
+      "name": "POST to Intelligence",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "parameters": {
+        "method": "POST",
+        "url": "https://intelligence.ehos.com.br/webhooks/generic/order",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Store-Key",
+              "value": "={{$env.INTELLIGENCE_GENERIC_KEY}}"
+            },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}"
+      },
+      "position": [900, 300]
+    }
+  ],
+  "connections": {
+    "Schedule": {
+      "main": [[{ "node": "Get Webflow Orders", "type": "main", "index": 0 }]]
+    },
+    "Get Webflow Orders": {
+      "main": [[{ "node": "Filter Paid", "type": "main", "index": 0 }]]
+    },
+    "Filter Paid": {
+      "main": [[{ "node": "Normalize Payload", "type": "main", "index": 0 }]]
+    },
+    "Normalize Payload": {
+      "main": [[{ "node": "POST to Intelligence", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "_comment": "Configurar WEBFLOW_SITE_ID, WEBFLOW_STORE_ID, INTELLIGENCE_GENERIC_KEY no n8n"
+  }
+}

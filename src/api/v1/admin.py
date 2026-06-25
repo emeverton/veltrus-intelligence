@@ -278,3 +278,136 @@ async def create_vtex_store(
     )
     await session.commit()
     return {"account_name": payload.account_name, "created": True}
+
+
+class WooCommerceStoreCreate(BaseModel):
+    store_url: str
+    display_name: Optional[str] = None
+    webhook_secret: str
+    consumer_key: Optional[str] = None
+    consumer_secret: Optional[str] = None
+    meta_pixel_id: Optional[str] = None
+    meta_access_token: Optional[str] = None
+    google_ads_customer_id: Optional[str] = None
+
+
+class GenericStoreCreate(BaseModel):
+    store_id: str
+    display_name: Optional[str] = None
+    api_key: str
+    platform: str = "other"
+    meta_pixel_id: Optional[str] = None
+    meta_access_token: Optional[str] = None
+
+
+@router.get("/woocommerce-stores")
+async def list_woocommerce_stores(
+    session: AsyncSession = Depends(get_session),
+    _: None = Depends(require_admin_key),
+):
+    result = await session.execute(
+        sql_text("""
+            SELECT store_url, display_name, meta_pixel_id, active, created_at
+            FROM woocommerce_stores
+            ORDER BY created_at DESC
+        """)
+    )
+    return [dict(r._mapping) for r in result.fetchall()]
+
+
+@router.post("/woocommerce-stores", status_code=201)
+async def create_woocommerce_store(
+    payload: WooCommerceStoreCreate,
+    session: AsyncSession = Depends(get_session),
+    _: None = Depends(require_admin_key),
+):
+    import uuid
+
+    url = payload.store_url.rstrip("/").lower()
+    if not url.startswith("http"):
+        url = f"https://{url}"
+
+    await session.execute(
+        sql_text("""
+            INSERT INTO woocommerce_stores
+                (id, store_url, display_name, webhook_secret, consumer_key,
+                 consumer_secret, meta_pixel_id, meta_access_token,
+                 google_ads_customer_id)
+            VALUES (:id, :url, :name, :secret, :ckey, :csecret, :pixel, :token, :gadscid)
+            ON CONFLICT (store_url) DO UPDATE SET
+                webhook_secret = EXCLUDED.webhook_secret,
+                display_name = EXCLUDED.display_name,
+                consumer_key = EXCLUDED.consumer_key,
+                consumer_secret = EXCLUDED.consumer_secret,
+                meta_pixel_id = EXCLUDED.meta_pixel_id,
+                meta_access_token = EXCLUDED.meta_access_token,
+                google_ads_customer_id = EXCLUDED.google_ads_customer_id
+        """),
+        {
+            "id": str(uuid.uuid4()),
+            "url": url,
+            "name": payload.display_name,
+            "secret": payload.webhook_secret,
+            "ckey": payload.consumer_key,
+            "csecret": payload.consumer_secret,
+            "pixel": payload.meta_pixel_id,
+            "token": payload.meta_access_token,
+            "gadscid": payload.google_ads_customer_id,
+        },
+    )
+    await session.commit()
+    return {"store_url": url, "created": True}
+
+
+@router.get("/generic-stores")
+async def list_generic_stores(
+    session: AsyncSession = Depends(get_session),
+    _: None = Depends(require_admin_key),
+):
+    result = await session.execute(
+        sql_text("""
+            SELECT store_id, display_name, platform, meta_pixel_id, active, created_at
+            FROM generic_stores
+            ORDER BY created_at DESC
+        """)
+    )
+    return [dict(r._mapping) for r in result.fetchall()]
+
+
+@router.post("/generic-stores", status_code=201)
+async def create_generic_store(
+    payload: GenericStoreCreate,
+    session: AsyncSession = Depends(get_session),
+    _: None = Depends(require_admin_key),
+):
+    import uuid
+
+    await session.execute(
+        sql_text("""
+            INSERT INTO generic_stores
+                (id, store_id, display_name, api_key, platform,
+                 meta_pixel_id, meta_access_token)
+            VALUES (:id, :sid, :name, :key, :platform, :pixel, :token)
+            ON CONFLICT (store_id) DO UPDATE SET
+                api_key = EXCLUDED.api_key,
+                display_name = EXCLUDED.display_name,
+                platform = EXCLUDED.platform,
+                meta_pixel_id = EXCLUDED.meta_pixel_id,
+                meta_access_token = EXCLUDED.meta_access_token
+        """),
+        {
+            "id": str(uuid.uuid4()),
+            "sid": payload.store_id,
+            "name": payload.display_name,
+            "key": payload.api_key,
+            "platform": payload.platform,
+            "pixel": payload.meta_pixel_id,
+            "token": payload.meta_access_token,
+        },
+    )
+    await session.commit()
+    return {
+        "store_id": payload.store_id,
+        "platform": payload.platform,
+        "created": True,
+    }
