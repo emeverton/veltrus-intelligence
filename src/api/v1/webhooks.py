@@ -3,6 +3,8 @@ import json
 import logging
 
 from fastapi import APIRouter, HTTPException, Request
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlalchemy import text as sql_text
 
 from src.config import settings
@@ -18,9 +20,16 @@ from src.webhooks.nuvemshop_parser import (
     extract_nuvemshop_store_id,
     extract_nuvemshop_order_id,
 )
+from src.webhooks.vtex_handler import process_vtex_order
+from src.webhooks.vtex_parser import (
+    is_paid_state,
+    extract_vtex_order_id,
+    extract_vtex_account,
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+limiter = Limiter(key_func=get_remote_address)
 
 
 async def _get_tray_store(seller_id: str) -> dict | None:
@@ -53,7 +62,23 @@ async def _get_nuvemshop_store(store_id: str) -> dict | None:
         return dict(row._mapping) if row else None
 
 
+async def _get_vtex_store(account_name: str) -> dict | None:
+    async with AsyncSessionFactory() as session:
+        result = await session.execute(
+            sql_text("""
+                SELECT account_name, display_name, app_key, app_token,
+                       meta_pixel_id, meta_access_token, meta_test_event_code, active
+                FROM vtex_stores
+                WHERE account_name = :account AND active = true
+            """),
+            {"account": account_name},
+        )
+        row = result.fetchone()
+        return dict(row._mapping) if row else None
+
+
 @router.post("/shopify/orders/paid")
+@limiter.limit("120/minute")
 async def shopify_orders_paid(request: Request):
     """
     Webhook multi-tenant.
@@ -141,6 +166,7 @@ async def recent_orders(
 
 
 @router.post("/tray/orders")
+@limiter.limit("120/minute")
 async def tray_orders_webhook(request: Request):
     """
     Webhook Tray Commerce.
@@ -185,6 +211,7 @@ async def tray_orders_webhook(request: Request):
 
 
 @router.post("/nuvemshop/orders")
+@limiter.limit("120/minute")
 async def nuvemshop_orders_webhook(request: Request):
     """
     Webhook Nuvemshop (Tienda Nube).
@@ -225,3 +252,57 @@ async def nuvemshop_orders_webhook(request: Request):
 
     asyncio.create_task(process_nuvemshop_order(payload, store))
     return {"received": True, "processed": True, "order_id": str(order_id)}
+
+
+@router.post("/vtex/orders")
+@limiter.limit("120/minute")
+async def vtex_orders_webhook(request: Request):
+    """
+    Webhook VTEX.
+    VTEX envia apenas orderId + state → buscamos detalhes via VTEX API.
+    Auth: X-VTEX-API-AppKey + X-VTEX-API-AppToken no header.
+    """
+    app_key = request.headers.get("X-VTEX-API-AppKey", "")
+    app_token = request.headers.get("X-VTEX-API-AppToken", "")
+
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+
+    account_name = extract_vtex_account(payload)
+    if not account_name:
+        raise HTTPException(status_code=400, detail="Origin.Account ausente no payload")
+
+    store = await _get_vtex_store(account_name)
+    if not store:
+        logger.warning("VTEX account %s não cadastrado", account_name)
+        raise HTTPException(status_code=401, detail="Store not found")
+
+    if app_key != store["app_key"] or app_token != store["app_token"]:
+        raise HTTPException(status_code=401, detail="Invalid VTEX credentials")
+
+    state = payload.get("State", payload.get("state", ""))
+    if not is_paid_state(state):
+        logger.info("VTEX state %s — skipping", state)
+        return {
+            "received": True,
+            "processed": False,
+            "reason": f"state '{state}' is not paid",
+        }
+
+    order_id = extract_vtex_order_id(payload)
+    logger.info(
+        "VTEX webhook: account=%s, order=%s, state=%s",
+        account_name,
+        order_id,
+        state,
+    )
+
+    asyncio.create_task(process_vtex_order(payload, store))
+    return {
+        "received": True,
+        "processed": True,
+        "order_id": order_id,
+        "state": state,
+    }
