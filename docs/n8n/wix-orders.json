@@ -1,0 +1,172 @@
+{
+  "name": "Wix Stores → Intelligence (poll a cada 5min)",
+  "_description": "Usa Wix Headless API para buscar novas ordens pagas. Envia ao endpoint genérico do Intelligence.",
+  "_prerequisites": [
+    "1. Criar API key no Wix Developer Center: developers.wix.com",
+    "2. Ativar permissão: eCommerce → Manage Orders",
+    "3. Obter o Site ID do painel Wix (Settings → Advanced → Site ID)",
+    "4. Cadastrar loja genérica no Intelligence: POST /api/v1/admin/generic-stores (platform: wix)",
+    "5. Configurar variáveis de ambiente no n8n: WIX_API_KEY, WIX_SITE_ID, WIX_STORE_ID, INTELLIGENCE_GENERIC_KEY"
+  ],
+  "nodes": [
+    {
+      "name": "Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "parameters": {
+        "rule": { "interval": [{ "field": "minutes", "minutesInterval": 5 }] }
+      },
+      "position": [100, 300]
+    },
+    {
+      "name": "Get Last Checked",
+      "type": "n8n-nodes-base.set",
+      "parameters": {
+        "values": {
+          "string": [{
+            "name": "lastChecked",
+            "value": "={{ $workflow.staticData.lastChecked || new Date(Date.now() - 6 * 60 * 1000).toISOString() }}"
+          }]
+        }
+      },
+      "position": [300, 300]
+    },
+    {
+      "name": "Wix Orders API",
+      "type": "n8n-nodes-base.httpRequest",
+      "parameters": {
+        "method": "GET",
+        "url": "https://www.wixapis.com/ecom/v1/orders",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "={{$env.WIX_API_KEY}}" },
+            { "name": "wix-site-id",   "value": "={{$env.WIX_SITE_ID}}" },
+            { "name": "wix-account-id","value": "={{$env.WIX_ACCOUNT_ID}}" }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "sort.fieldName", "value": "dateCreated" },
+            { "name": "sort.order",     "value": "DESC" },
+            { "name": "paging.limit",   "value": "50" }
+          ]
+        }
+      },
+      "position": [500, 300]
+    },
+    {
+      "name": "Filter Paid Orders",
+      "type": "n8n-nodes-base.filter",
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.paymentStatus }}",
+              "operation": "equals",
+              "value2": "PAID"
+            }
+          ]
+        }
+      },
+      "position": [700, 300]
+    },
+    {
+      "name": "Filter New Orders",
+      "type": "n8n-nodes-base.filter",
+      "parameters": {
+        "conditions": {
+          "dateTime": [
+            {
+              "value1": "={{ $json.dateCreated }}",
+              "operation": "after",
+              "value2": "={{ $('Get Last Checked').item.json.lastChecked }}"
+            }
+          ]
+        }
+      },
+      "position": [900, 300]
+    },
+    {
+      "name": "Split Orders",
+      "type": "n8n-nodes-base.splitInBatches",
+      "parameters": { "batchSize": 1 },
+      "position": [1100, 300]
+    },
+    {
+      "name": "Normalize Payload",
+      "type": "n8n-nodes-base.set",
+      "parameters": {
+        "values": {
+          "string": [
+            { "name": "store_id",    "value": "={{$env.WIX_STORE_ID}}" },
+            { "name": "order_id",    "value": "={{ $json.id }}" },
+            { "name": "platform",    "value": "wix" },
+            { "name": "email",       "value": "={{ $json.buyerInfo?.email || $json.billingInfo?.contactDetails?.email || '' }}" },
+            { "name": "phone",       "value": "={{ $json.billingInfo?.contactDetails?.phone || '' }}" },
+            { "name": "currency",    "value": "={{ $json.currency || 'BRL' }}" },
+            { "name": "utm_source",  "value": "={{ $json.channelInfo?.externalOrderInfo?.externalOrderUrl?.includes('utm_source') ? new URL($json.channelInfo.externalOrderInfo.externalOrderUrl).searchParams.get('utm_source') : '' }}" },
+            { "name": "utm_medium",  "value": "={{ '' }}" },
+            { "name": "utm_campaign","value": "={{ '' }}" },
+            { "name": "gclid",       "value": "={{ null }}" },
+            { "name": "fbclid",      "value": "={{ null }}" }
+          ],
+          "number": [
+            { "name": "revenue", "value": "={{ parseFloat($json.priceSummary?.total?.amount || 0) }}" }
+          ]
+        }
+      },
+      "position": [1300, 300]
+    },
+    {
+      "name": "POST to Intelligence",
+      "type": "n8n-nodes-base.httpRequest",
+      "parameters": {
+        "method": "POST",
+        "url": "https://intelligence.ehos.com.br/webhooks/generic/order",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "X-Store-Key",  "value": "={{$env.INTELLIGENCE_GENERIC_KEY}}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}"
+      },
+      "position": [1500, 300]
+    },
+    {
+      "name": "Update Last Checked",
+      "type": "n8n-nodes-base.set",
+      "parameters": {
+        "values": {
+          "string": [{ "name": "updated", "value": "={{ new Date().toISOString() }}" }]
+        }
+      },
+      "onError": "continueRegularOutput",
+      "position": [1700, 300],
+      "_note": "Após processar, salvar timestamp em $workflow.staticData.lastChecked"
+    }
+  ],
+  "connections": {
+    "Schedule":           { "main": [[{ "node": "Get Last Checked",   "type": "main", "index": 0 }]] },
+    "Get Last Checked":   { "main": [[{ "node": "Wix Orders API",     "type": "main", "index": 0 }]] },
+    "Wix Orders API":     { "main": [[{ "node": "Filter Paid Orders", "type": "main", "index": 0 }]] },
+    "Filter Paid Orders": { "main": [[{ "node": "Filter New Orders",  "type": "main", "index": 0 }]] },
+    "Filter New Orders":  { "main": [[{ "node": "Split Orders",       "type": "main", "index": 0 }]] },
+    "Split Orders":       { "main": [[{ "node": "Normalize Payload",  "type": "main", "index": 0 }]] },
+    "Normalize Payload":  { "main": [[{ "node": "POST to Intelligence","type": "main", "index": 0 }]] },
+    "POST to Intelligence":{ "main": [[{ "node": "Update Last Checked","type": "main", "index": 0 }]] }
+  },
+  "settings": {
+    "_env_vars_needed": [
+      "WIX_API_KEY — API key do Wix Developer Center (começa com IST.)",
+      "WIX_SITE_ID — Settings → Advanced → Site ID no painel Wix",
+      "WIX_ACCOUNT_ID — ID da conta Wix (aparece na URL do dashboard)",
+      "WIX_STORE_ID — store_id cadastrado via POST /api/v1/admin/generic-stores",
+      "INTELLIGENCE_GENERIC_KEY — api_key da loja genérica no Intelligence"
+    ]
+  }
+}
