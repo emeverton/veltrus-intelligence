@@ -4,9 +4,12 @@ Autenticado via X-Admin-Key header.
 """
 from __future__ import annotations
 
+from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException
+from pydantic import BaseModel
+from sqlalchemy import text as sql_text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import settings
@@ -86,3 +89,65 @@ async def deactivate_store(
     if not ok:
         raise HTTPException(status_code=404, detail="Store not found")
     await session.commit()
+
+
+class TrayStoreCreate(BaseModel):
+    seller_id: str
+    display_name: Optional[str] = None
+    api_key: str
+    meta_pixel_id: Optional[str] = None
+    meta_access_token: Optional[str] = None
+    google_ads_customer_id: Optional[str] = None
+
+
+@router.get("/tray-stores")
+async def list_tray_stores(
+    session: AsyncSession = Depends(get_session),
+    _: None = Depends(require_admin_key),
+):
+    result = await session.execute(
+        sql_text("""
+            SELECT seller_id, display_name, meta_pixel_id, google_ads_customer_id,
+                   active, created_at
+            FROM tray_stores
+            ORDER BY created_at DESC
+        """)
+    )
+    return [dict(r._mapping) for r in result.fetchall()]
+
+
+@router.post("/tray-stores", status_code=201)
+async def create_tray_store(
+    payload: TrayStoreCreate,
+    session: AsyncSession = Depends(get_session),
+    _: None = Depends(require_admin_key),
+):
+    import uuid
+
+    await session.execute(
+        sql_text("""
+            INSERT INTO tray_stores
+                (id, seller_id, display_name, api_key, meta_pixel_id,
+                 meta_access_token, google_ads_customer_id)
+            VALUES
+                (:id, :seller_id, :display_name, :api_key, :meta_pixel_id,
+                 :meta_access_token, :google_ads_customer_id)
+            ON CONFLICT (seller_id) DO UPDATE SET
+              api_key = EXCLUDED.api_key,
+              display_name = EXCLUDED.display_name,
+              meta_pixel_id = EXCLUDED.meta_pixel_id,
+              meta_access_token = EXCLUDED.meta_access_token,
+              google_ads_customer_id = EXCLUDED.google_ads_customer_id
+        """),
+        {
+            "id": str(uuid.uuid4()),
+            "seller_id": payload.seller_id,
+            "display_name": payload.display_name,
+            "api_key": payload.api_key,
+            "meta_pixel_id": payload.meta_pixel_id,
+            "meta_access_token": payload.meta_access_token,
+            "google_ads_customer_id": payload.google_ads_customer_id,
+        },
+    )
+    await session.commit()
+    return {"seller_id": payload.seller_id, "created": True}

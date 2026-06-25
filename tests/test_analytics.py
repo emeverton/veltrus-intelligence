@@ -71,3 +71,37 @@ async def test_analytics_summary_structure():
     assert "shopify_orders" in data
     assert data["profiles"]["total"] == 10
     assert data["shopify_orders"] == 4
+    assert data["shop_domain"] is None
+
+
+@pytest.mark.asyncio
+async def test_analytics_summary_shop_domain_filter():
+    conv_row = MagicMock()
+    conv_row.total = 2
+    conv_row.total_revenue = 500.0
+    conv_row.currency = "BRL"
+
+    mock_session = AsyncMock()
+    mock_session.execute = AsyncMock(
+        side_effect=[
+            _mock_scalar(10),
+            _mock_scalar(1),
+            _mock_fetchone(conv_row),
+            _mock_fetchall([]),
+            _mock_fetchall([]),
+        ]
+    )
+
+    mock_ctx = AsyncMock()
+    mock_ctx.__aenter__.return_value = mock_session
+    mock_ctx.__aexit__.return_value = None
+
+    with patch("src.api.v1.analytics.AsyncSessionFactory", return_value=mock_ctx):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.get(
+                "/api/v1/analytics/summary?shop_domain=mdadqp-ar.myshopify.com"
+            )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["shop_domain"] == "mdadqp-ar.myshopify.com"

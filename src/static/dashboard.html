@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Veltrus Intelligence</title>
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Chart.js 4.4.0 via CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --void:      #020205;
+      --copper:    #B87333;
+      --petroleo:  #1A6080;
+      --gelo:      #E4EDFF;
+      --surface:   #0A0A12;
+      --surface-2: #111118;
+      --border:    rgba(228,237,255,0.08);
+      --text:      #E4EDFF;
+      --muted:     rgba(228,237,255,0.45);
+      --copper-glow: rgba(184,115,51,0.15);
+    }
+
+    body {
+      background: var(--void);
+      color: var(--text);
+      font-family: 'Chakra Petch', system-ui, sans-serif;
+      font-size: 14px;
+      min-height: 100vh;
+    }
+
+    /* AUTH OVERLAY */
+    #auth {
+      position: fixed; inset: 0; z-index: 100;
+      background: var(--void);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .auth-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 40px;
+      width: 100%; max-width: 400px;
+      text-align: center;
+    }
+    .auth-card .logo { font-size: 22px; font-weight: 700; color: var(--copper); letter-spacing: 0.1em; margin-bottom: 8px; }
+    .auth-card .sub  { color: var(--muted); font-size: 13px; margin-bottom: 28px; }
+    .auth-card input {
+      width: 100%; padding: 12px 14px;
+      background: var(--void); border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text);
+      font-family: 'Chakra Petch', monospace; font-size: 13px;
+      outline: none; margin-bottom: 12px;
+    }
+    .auth-card input:focus { border-color: var(--copper); }
+    .auth-card button {
+      width: 100%; padding: 12px;
+      background: var(--copper); border: none; border-radius: 8px;
+      color: var(--void); font-family: 'Chakra Petch', sans-serif;
+      font-size: 14px; font-weight: 600; cursor: pointer;
+      letter-spacing: 0.05em;
+    }
+    .auth-card button:hover { background: #C8833A; }
+    .auth-error { color: #FF6B6B; font-size: 12px; margin-top: 8px; display: none; }
+
+    /* MAIN APP */
+    #app { display: none; }
+    header {
+      position: sticky; top: 0; z-index: 50;
+      background: rgba(2,2,5,0.92);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      display: flex; align-items: center; gap: 16px; height: 56px;
+    }
+    .logo-mark { font-size: 18px; font-weight: 700; color: var(--copper); letter-spacing: 0.08em; }
+    .logo-sub  { font-size: 11px; color: var(--muted); letter-spacing: 0.12em; text-transform: uppercase; }
+    header .spacer { flex: 1; }
+    .status-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: #4CAF50; box-shadow: 0 0 6px #4CAF50;
+    }
+    .status-dot.err { background: #FF5252; box-shadow: 0 0 6px #FF5252; }
+    .btn-icon {
+      padding: 6px 12px; border-radius: 6px;
+      background: transparent; border: 1px solid var(--border);
+      color: var(--muted); font-size: 12px; cursor: pointer;
+      font-family: 'Chakra Petch', sans-serif;
+    }
+    .btn-icon:hover { border-color: var(--copper); color: var(--copper); }
+    #last-refresh { font-size: 11px; color: var(--muted); }
+
+    /* LAYOUT */
+    main { max-width: 1280px; margin: 0 auto; padding: 24px; }
+    .section-title {
+      font-size: 11px; font-weight: 600; letter-spacing: 0.14em;
+      text-transform: uppercase; color: var(--muted); margin-bottom: 14px;
+    }
+
+    /* METRIC CARDS */
+    .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 24px; }
+    .metric {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px; padding: 20px;
+      position: relative; overflow: hidden;
+    }
+    .metric::before {
+      content: ''; position: absolute;
+      top: 0; left: 0; right: 0; height: 2px;
+      background: var(--copper);
+    }
+    .metric.blue::before { background: var(--petroleo); }
+    .metric-label { font-size: 11px; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 10px; }
+    .metric-value { font-size: 28px; font-weight: 700; color: var(--gelo); line-height: 1; }
+    .metric-sub   { font-size: 12px; color: var(--muted); margin-top: 6px; }
+
+    /* CHARTS + TABLE ROW */
+    .row-2 { display: grid; grid-template-columns: 300px 1fr; gap: 14px; margin-bottom: 24px; }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px; padding: 20px;
+    }
+    .chart-wrap { height: 220px; display: flex; align-items: center; justify-content: center; }
+
+    /* TABLES */
+    .row-tables { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 24px; }
+    table { width: 100%; border-collapse: collapse; }
+    th { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; padding: 8px 0; text-align: left; border-bottom: 1px solid var(--border); }
+    td { padding: 10px 0; border-bottom: 1px solid rgba(228,237,255,0.04); font-size: 13px; }
+    td:last-child { text-align: right; }
+    th:last-child { text-align: right; }
+    .tag {
+      display: inline-block; padding: 2px 8px; border-radius: 4px;
+      font-size: 11px; font-weight: 500;
+    }
+    .tag-google  { background: rgba(26,96,128,0.25); color: #4AB4D8; }
+    .tag-meta    { background: rgba(184,115,51,0.2); color: var(--copper); }
+    .tag-direct  { background: rgba(228,237,255,0.08); color: var(--muted); }
+    .tag-other   { background: rgba(107,91,149,0.2); color: #B39DDB; }
+
+    /* AGENT PANEL */
+    .agent-card {
+      background: var(--surface);
+      border: 1px solid var(--copper-glow);
+      border-radius: 10px; padding: 20px; margin-bottom: 24px;
+    }
+    .agent-input-row { display: flex; gap: 10px; margin-bottom: 12px; }
+    .agent-input-row input {
+      flex: 1; padding: 10px 14px;
+      background: var(--void); border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text);
+      font-family: 'Chakra Petch', sans-serif; font-size: 13px; outline: none;
+    }
+    .agent-input-row input:focus { border-color: var(--copper); }
+    .btn-run {
+      padding: 10px 20px; background: var(--copper); border: none;
+      border-radius: 8px; color: var(--void); font-family: 'Chakra Petch', sans-serif;
+      font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap;
+    }
+    .btn-run:disabled { opacity: 0.5; cursor: not-allowed; }
+    #agent-result {
+      background: var(--void); border: 1px solid var(--border);
+      border-radius: 8px; padding: 14px; font-size: 13px; line-height: 1.7;
+      color: var(--gelo); min-height: 60px; white-space: pre-wrap;
+    }
+    .agent-status { font-size: 11px; color: var(--muted); margin-bottom: 8px; }
+
+    /* STORES */
+    .stores-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+    .store-card {
+      background: var(--surface-2); border: 1px solid var(--border);
+      border-radius: 8px; padding: 16px;
+    }
+    .store-domain { font-weight: 600; color: var(--gelo); margin-bottom: 4px; }
+    .store-name   { font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+    .store-badges { display: flex; gap: 6px; flex-wrap: wrap; }
+    .badge {
+      font-size: 10px; padding: 2px 7px; border-radius: 3px;
+      letter-spacing: 0.06em;
+    }
+    .badge-on  { background: rgba(76,175,80,0.15); color: #81C784; }
+    .badge-off { background: rgba(228,237,255,0.06); color: var(--muted); }
+
+    /* EMPTY STATE */
+    .empty { color: var(--muted); font-size: 13px; padding: 20px 0; text-align: center; }
+
+    /* SPINNER */
+    .spin { display: inline-block; animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    @media (max-width: 900px) {
+      .metrics { grid-template-columns: repeat(2, 1fr); }
+      .row-2 { grid-template-columns: 1fr; }
+      .row-tables { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- AUTH -->
+<div id="auth">
+  <div class="auth-card">
+    <div class="logo">VELTRUS</div>
+    <div class="sub">Revenue Intelligence — Admin</div>
+    <input id="key-input" type="password" placeholder="Admin API Key" autocomplete="off">
+    <button onclick="doAuth()">Entrar</button>
+    <div class="auth-error" id="auth-err">Chave inválida. Tente novamente.</div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <header>
+    <div>
+      <div class="logo-mark">VELTRUS</div>
+      <div class="logo-sub">Revenue Intelligence</div>
+    </div>
+    <div class="spacer"></div>
+    <span id="last-refresh"></span>
+    <div class="status-dot" id="status-dot"></div>
+    <button class="btn-icon" onclick="refresh()">↻ Atualizar</button>
+    <button class="btn-icon" onclick="logout()" style="color:#FF6B6B;border-color:rgba(255,107,107,0.3)">Sair</button>
+  </header>
+
+  <main>
+    <!-- MÉTRICAS -->
+    <p class="section-title">Visão geral — últimos 30 dias</p>
+    <div class="metrics">
+      <div class="metric">
+        <div class="metric-label">Perfis identificados</div>
+        <div class="metric-value" id="m-profiles">—</div>
+        <div class="metric-sub">identidades resolvidas</div>
+      </div>
+      <div class="metric blue">
+        <div class="metric-label">Ordens Shopify</div>
+        <div class="metric-value" id="m-orders">—</div>
+        <div class="metric-sub">recebidas via webhook</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">Conversões</div>
+        <div class="metric-value" id="m-convs">—</div>
+        <div class="metric-sub">com atribuição</div>
+      </div>
+      <div class="metric blue">
+        <div class="metric-label">Revenue atribuído</div>
+        <div class="metric-value" id="m-revenue">—</div>
+        <div class="metric-sub" id="m-currency">BRL · modelo linear</div>
+      </div>
+    </div>
+
+    <!-- CHART + LTV -->
+    <div class="row-2">
+      <div class="card">
+        <p class="section-title">Revenue por canal</p>
+        <div class="chart-wrap">
+          <canvas id="chart-channels" style="max-height:200px;max-width:200px"></canvas>
+        </div>
+        <div id="chart-legend" style="margin-top:12px"></div>
+      </div>
+      <div class="card">
+        <p class="section-title">Top perfis por LTV</p>
+        <table>
+          <thead><tr><th>#</th><th>Perfil</th><th>Conversões</th><th>LTV</th></tr></thead>
+          <tbody id="ltv-tbody"><tr><td colspan="4" class="empty">Carregando…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- TABELAS -->
+    <div class="row-tables">
+      <div class="card">
+        <p class="section-title">Últimas ordens recebidas</p>
+        <table>
+          <thead><tr><th>Ordem</th><th>Canal</th><th>Valor</th><th>Status</th></tr></thead>
+          <tbody id="orders-tbody"><tr><td colspan="4" class="empty">Carregando…</td></tr></tbody>
+        </table>
+      </div>
+      <div class="card">
+        <p class="section-title">Lojas conectadas</p>
+        <div id="stores-list" class="stores-grid">
+          <div class="empty">Carregando…</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- AGENTE -->
+    <div class="agent-card">
+      <p class="section-title" style="color:var(--copper)">Revenue Intelligence Agent</p>
+      <div class="agent-input-row">
+        <input id="agent-q" type="text"
+          placeholder="Ex: Qual canal gerou mais receita? Qual é o LTV médio por perfil?"
+          onkeydown="if(event.key==='Enter')runAgent()">
+        <button class="btn-run" id="agent-btn" onclick="runAgent()">▶ Executar</button>
+      </div>
+      <div class="agent-status" id="agent-status"></div>
+      <div id="agent-result">O agente vai analisar os dados do pipeline e responder aqui.</div>
+    </div>
+  </main>
+</div>
+
+<script>
+// ── ESTADO ────────────────────────────────────────────────────────────────
+var adminKey = localStorage.getItem('veltrus_admin_key') || '';
+var channelChart = null;
+var API = '';  // mesma origem
+
+// ── AUTH ─────────────────────────────────────────────────────────────────
+async function doAuth() {
+  var k = document.getElementById('key-input').value.trim();
+  if (!k) return;
+  var ok = await testKey(k);
+  if (ok) {
+    adminKey = k;
+    localStorage.setItem('veltrus_admin_key', k);
+    document.getElementById('auth').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    loadAll();
+  } else {
+    document.getElementById('auth-err').style.display = 'block';
+  }
+}
+
+async function testKey(k) {
+  try {
+    var r = await fetch(API + '/api/v1/admin/stores', {
+      headers: { 'X-Admin-Key': k }
+    });
+    return r.status !== 403;
+  } catch (e) { return false; }
+}
+
+function logout() {
+  localStorage.removeItem('veltrus_admin_key');
+  location.reload();
+}
+
+// Verificar key existente no load
+(async function() {
+  if (adminKey && await testKey(adminKey)) {
+    document.getElementById('auth').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    loadAll();
+  }
+})();
+
+// ── API HELPER ────────────────────────────────────────────────────────────
+async function api(path, opts) {
+  opts = opts || {};
+  var r = await fetch(API + path, Object.assign({}, opts, {
+    headers: Object.assign({
+      'Content-Type': 'application/json',
+      'X-Admin-Key': adminKey
+    }, opts.headers || {})
+  }));
+  if (!r.ok) throw new Error(String(r.status));
+  return r.json();
+}
+
+// ── FORMATADORES ──────────────────────────────────────────────────────────
+function fmtCurrency(v, currency) {
+  currency = currency || 'BRL';
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: currency }).format(v || 0);
+}
+
+function shortId(id) {
+  return id ? id.slice(0, 8) + '…' : '—';
+}
+
+function channelTag(ch) {
+  if (!ch) return '<span class="tag tag-direct">direct</span>';
+  var lower = ch.toLowerCase();
+  if (lower.indexOf('google') !== -1) return '<span class="tag tag-google">' + ch + '</span>';
+  if (lower.indexOf('meta') !== -1 || lower.indexOf('facebook') !== -1) return '<span class="tag tag-meta">' + ch + '</span>';
+  return '<span class="tag tag-other">' + ch + '</span>';
+}
+
+var CHANNEL_COLORS = {
+  google_ads: '#1A6080',
+  meta_ads:   '#B87333',
+  direct:     '#4A4A6A',
+  email:      '#4CAF50',
+  organic:    '#FF9800'
+};
+function channelColor(ch) {
+  return CHANNEL_COLORS[ch] || '#6B5B95';
+}
+
+// ── RENDER SUMMARY ────────────────────────────────────────────────────────
+async function loadSummary() {
+  var d = await api('/api/v1/analytics/summary');
+
+  document.getElementById('m-profiles').textContent = (d.profiles && d.profiles.total) || 0;
+  document.getElementById('m-orders').textContent   = d.shopify_orders || 0;
+  document.getElementById('m-convs').textContent    = (d.conversions && d.conversions.total) || 0;
+  document.getElementById('m-revenue').textContent  =
+    fmtCurrency(d.conversions && d.conversions.total_revenue, (d.conversions && d.conversions.currency) || 'BRL');
+
+  var channels = d.revenue_by_channel || [];
+  if (channelChart) { channelChart.destroy(); channelChart = null; }
+
+  if (channels.length === 0) {
+    document.querySelector('.chart-wrap').innerHTML =
+      '<span style="color:var(--muted);font-size:13px">Sem dados de canal</span>';
+  } else {
+    var ctx = document.getElementById('chart-channels').getContext('2d');
+    var totalRev = (d.conversions && d.conversions.total_revenue) || 1;
+    channelChart = new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels: channels.map(function(c) { return c.channel; }),
+        datasets: [{
+          data: channels.map(function(c) { return c.revenue_credit; }),
+          backgroundColor: channels.map(function(c) { return channelColor(c.channel); }),
+          borderWidth: 0,
+          hoverOffset: 4
+        }]
+      },
+      options: {
+        cutout: '70%',
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: function(ctx) {
+                return ' ' + fmtCurrency(ctx.raw) + ' (' + Math.round(ctx.parsed / totalRev * 100) + '%)';
+              }
+            }
+          }
+        }
+      }
+    });
+    document.getElementById('chart-legend').innerHTML = channels.map(function(c) {
+      return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">' +
+        '<div style="width:10px;height:10px;border-radius:2px;background:' + channelColor(c.channel) + ';flex-shrink:0"></div>' +
+        '<span style="font-size:12px;color:var(--muted);flex:1">' + c.channel + '</span>' +
+        '<span style="font-size:12px;font-weight:500">' + fmtCurrency(c.revenue_credit) + '</span>' +
+      '</div>';
+    }).join('');
+  }
+
+  var ltv = d.top_profiles_by_ltv || [];
+  document.getElementById('ltv-tbody').innerHTML = ltv.length
+    ? ltv.map(function(p, i) {
+        return '<tr>' +
+          '<td style="color:var(--muted)">' + (i + 1) + '</td>' +
+          '<td style="font-family:monospace;font-size:12px">' + shortId(p.profile_id) + '</td>' +
+          '<td>' + (p.conversions || 0) + '</td>' +
+          '<td style="color:var(--copper);font-weight:600">' + fmtCurrency(p.ltv) + '</td>' +
+        '</tr>';
+      }).join('')
+    : '<tr><td colspan="4" class="empty">Sem dados</td></tr>';
+}
+
+// ── RECENT ORDERS ─────────────────────────────────────────────────────────
+async function loadOrders() {
+  var d = await api('/webhooks/shopify/recent?limit=8');
+  var orders = d.orders || [];
+  document.getElementById('orders-tbody').innerHTML = orders.length
+    ? orders.map(function(o) {
+        return '<tr>' +
+          '<td style="font-family:monospace;font-size:12px">#' + o.shopify_order_id.slice(-6) + '</td>' +
+          '<td>' + channelTag(o.channel) + '</td>' +
+          '<td>' + fmtCurrency(o.total_price, o.currency) + '</td>' +
+          '<td><span style="font-size:11px;color:' + (o.status === 'done' ? '#81C784' : 'var(--copper)') + '">' +
+            o.status + '</span></td>' +
+        '</tr>';
+      }).join('')
+    : '<tr><td colspan="4" class="empty">Nenhuma ordem recebida ainda</td></tr>';
+}
+
+// ── STORES ────────────────────────────────────────────────────────────────
+async function loadStores() {
+  var stores = await api('/api/v1/admin/stores');
+  var el = document.getElementById('stores-list');
+  if (!stores.length) { el.innerHTML = '<div class="empty">Nenhuma loja conectada</div>'; return; }
+  el.innerHTML = stores.map(function(s) {
+    return '<div class="store-card">' +
+      '<div class="store-domain">' + (s.display_name || s.shop_domain) + '</div>' +
+      '<div class="store-name">' + s.shop_domain + '</div>' +
+      '<div class="store-badges">' +
+        '<span class="badge ' + (s.active ? 'badge-on' : 'badge-off') + '">' + (s.active ? 'ATIVA' : 'INATIVA') + '</span>' +
+        '<span class="badge ' + (s.meta_pixel_id ? 'badge-on' : 'badge-off') + '">META CAPI</span>' +
+        '<span class="badge ' + (s.google_ads_customer_id ? 'badge-on' : 'badge-off') + '">GOOGLE ADS</span>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+// ── HEALTH STATUS ─────────────────────────────────────────────────────────
+async function loadHealth() {
+  var dot = document.getElementById('status-dot');
+  try {
+    var h = await api('/health/detailed');
+    dot.className = h.status === 'ok' ? 'status-dot' : 'status-dot err';
+  } catch (e) { dot.className = 'status-dot err'; }
+}
+
+// ── AGENT ─────────────────────────────────────────────────────────────────
+async function runAgent() {
+  var q = document.getElementById('agent-q').value.trim();
+  if (!q) return;
+  var btn = document.getElementById('agent-btn');
+  var status = document.getElementById('agent-status');
+  var result = document.getElementById('agent-result');
+
+  btn.disabled = true;
+  btn.textContent = '⟳ Processando…';
+  result.textContent = '';
+  status.textContent = '▸ Enviando para o agente…';
+
+  try {
+    var job = await api('/api/v1/agents/run', {
+      method: 'POST',
+      body: JSON.stringify({ task: q })
+    });
+
+    status.textContent = '▸ Job ' + job.job_id.slice(0, 8) + '… aguardando resultado';
+
+    var attempts = 0;
+    var poll = setInterval(async function() {
+      attempts++;
+      if (attempts > 24) {
+        clearInterval(poll);
+        status.textContent = '✗ Timeout — tente novamente';
+        btn.disabled = false; btn.textContent = '▶ Executar';
+        return;
+      }
+      try {
+        var s = await api('/api/v1/agents/status/' + job.job_id);
+        if (s.status === 'done') {
+          clearInterval(poll);
+          result.textContent = (s.result && s.result.answer) || JSON.stringify(s.result, null, 2);
+          status.textContent = '✓ Concluído em ~' + (attempts * 2.5) + 's';
+          btn.disabled = false; btn.textContent = '▶ Executar';
+        } else if (s.status === 'failed') {
+          clearInterval(poll);
+          result.textContent = 'Erro: ' + s.error;
+          status.textContent = '✗ Falhou';
+          btn.disabled = false; btn.textContent = '▶ Executar';
+        } else {
+          status.textContent = '▸ ' + s.status + '… (' + (attempts * 2.5) + 's)';
+        }
+      } catch (e) { /* continuar polling */ }
+    }, 2500);
+
+  } catch (e) {
+    result.textContent = 'Erro: ' + e.message;
+    btn.disabled = false; btn.textContent = '▶ Executar';
+  }
+}
+
+// ── LOAD ALL ─────────────────────────────────────────────────────────────
+async function loadAll() {
+  try {
+    await Promise.all([loadSummary(), loadOrders(), loadStores(), loadHealth()]);
+    var now = new Date();
+    document.getElementById('last-refresh').textContent =
+      'Atualizado ' + now.toLocaleTimeString('pt-BR');
+  } catch (e) {
+    console.error('Load error:', e);
+  }
+}
+
+function refresh() { loadAll(); }
+
+setInterval(function() { if (adminKey) loadAll(); }, 90000);
+</script>
+</body>
+</html>
