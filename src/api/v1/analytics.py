@@ -115,3 +115,51 @@ async def analytics_summary(
             for r in ltv_rows
         ],
     }
+
+
+@router.get("/usage")
+async def usage_stats(
+    shop_domain: Optional[str] = Query(default=None),
+    seller_id: Optional[str] = Query(default=None),
+):
+    """
+    Retorna uso do mês corrente para uma loja.
+    Usado pelo VERTEX para mostrar barra de progresso de uso.
+    """
+    async with AsyncSessionFactory() as session:
+        shopify_count = 0
+        tray_count = 0
+
+        if shop_domain:
+            r = await session.execute(
+                sql_text("""
+                    SELECT COUNT(*) FROM shopify_orders
+                    WHERE shop_domain = :domain
+                      AND created_at >= DATE_TRUNC('month', NOW())
+                """),
+                {"domain": shop_domain},
+            )
+            shopify_count = r.scalar() or 0
+
+        if seller_id:
+            r = await session.execute(
+                sql_text("""
+                    SELECT COUNT(*) FROM tray_orders
+                    WHERE seller_id = :seller_id
+                      AND created_at >= DATE_TRUNC('month', NOW())
+                """),
+                {"seller_id": seller_id},
+            )
+            tray_count = r.scalar() or 0
+
+    total = shopify_count + tray_count
+    return {
+        "period": "current_month",
+        "shop_domain": shop_domain,
+        "seller_id": seller_id,
+        "shopify_orders": shopify_count,
+        "tray_orders": tray_count,
+        "total_orders": total,
+        "free_limit": 100,
+        "within_limit": total < 100,
+    }
