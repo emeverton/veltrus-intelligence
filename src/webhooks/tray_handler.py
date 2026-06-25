@@ -38,27 +38,25 @@ async def check_usage_limit(
     Verifica se a loja atingiu o limite mensal de ordens.
     Retorna (dentro_do_limite, contagem_atual).
     """
-    async with AsyncSessionFactory() as session:
-        if source == "tray":
-            query = """
-                SELECT COUNT(*) FROM tray_orders
-                WHERE seller_id = :sid
-                  AND created_at >= DATE_TRUNC('month', NOW())
-            """
-        elif source == "nuvemshop":
-            query = """
-                SELECT COUNT(*) FROM nuvemshop_orders
-                WHERE store_id = :sid
-                  AND created_at >= DATE_TRUNC('month', NOW())
-            """
-        else:
-            query = """
-                SELECT COUNT(*) FROM shopify_orders
-                WHERE shop_domain = :sid
-                  AND created_at >= DATE_TRUNC('month', NOW())
-            """
+    table_map = {
+        "tray": ("tray_orders", "seller_id"),
+        "nuvemshop": ("nuvemshop_orders", "store_id"),
+        "vtex": ("vtex_orders", "account_name"),
+        "shopify": ("shopify_orders", "shop_domain"),
+    }
+    table, col = table_map.get(source, ("shopify_orders", "shop_domain"))
 
-        result = await session.execute(sql_text(query), {"sid": seller_id})
+    async with AsyncSessionFactory() as session:
+        result = await session.execute(
+            sql_text(
+                f"""
+                SELECT COUNT(*) FROM {table}
+                WHERE {col} = :sid
+                  AND created_at >= DATE_TRUNC('month', NOW())
+                """
+            ),
+            {"sid": seller_id},
+        )
         count = result.scalar() or 0
 
     return count < FREE_LIMIT, count

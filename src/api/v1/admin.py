@@ -213,3 +213,68 @@ async def create_nuvemshop_store(
     )
     await session.commit()
     return {"store_id": payload.store_id, "created": True}
+
+
+class VtexStoreCreate(BaseModel):
+    account_name: str
+    display_name: Optional[str] = None
+    app_key: str
+    app_token: str
+    meta_pixel_id: Optional[str] = None
+    meta_access_token: Optional[str] = None
+    google_ads_customer_id: Optional[str] = None
+
+
+@router.get("/vtex-stores")
+async def list_vtex_stores(
+    session: AsyncSession = Depends(get_session),
+    _: None = Depends(require_admin_key),
+):
+    result = await session.execute(
+        sql_text("""
+            SELECT account_name, display_name, meta_pixel_id, google_ads_customer_id,
+                   active, created_at
+            FROM vtex_stores
+            ORDER BY created_at DESC
+        """)
+    )
+    return [dict(r._mapping) for r in result.fetchall()]
+
+
+@router.post("/vtex-stores", status_code=201)
+async def create_vtex_store(
+    payload: VtexStoreCreate,
+    session: AsyncSession = Depends(get_session),
+    _: None = Depends(require_admin_key),
+):
+    import uuid
+
+    await session.execute(
+        sql_text("""
+            INSERT INTO vtex_stores
+                (id, account_name, display_name, app_key, app_token, meta_pixel_id,
+                 meta_access_token, google_ads_customer_id)
+            VALUES
+                (:id, :account_name, :display_name, :app_key, :app_token, :meta_pixel_id,
+                 :meta_access_token, :google_ads_customer_id)
+            ON CONFLICT (account_name) DO UPDATE SET
+                app_key = EXCLUDED.app_key,
+                app_token = EXCLUDED.app_token,
+                display_name = EXCLUDED.display_name,
+                meta_pixel_id = EXCLUDED.meta_pixel_id,
+                meta_access_token = EXCLUDED.meta_access_token,
+                google_ads_customer_id = EXCLUDED.google_ads_customer_id
+        """),
+        {
+            "id": str(uuid.uuid4()),
+            "account_name": payload.account_name,
+            "display_name": payload.display_name,
+            "app_key": payload.app_key,
+            "app_token": payload.app_token,
+            "meta_pixel_id": payload.meta_pixel_id,
+            "meta_access_token": payload.meta_access_token,
+            "google_ads_customer_id": payload.google_ads_customer_id,
+        },
+    )
+    await session.commit()
+    return {"account_name": payload.account_name, "created": True}
