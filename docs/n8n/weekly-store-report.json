@@ -1,0 +1,237 @@
+{
+  "name": "Relatório semanal por loja (toda segunda 8h BRT)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "cronExpression", "expression": "0 11 * * 1" }]
+        }
+      },
+      "name": "Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [100, 300],
+      "notes": "11:00 UTC = 08:00 BRT (toda segunda)"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{$env.INTELLIGENCE_API_URL}}/api/v1/reports/weekly/all-stores",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "X-Admin-Key", "value": "={{$env.INTELLIGENCE_ADMIN_KEY}}" }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [{ "name": "weeks_back", "value": "1" }]
+        },
+        "options": { "timeout": 30000 }
+      },
+      "name": "Get All Active Stores",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [300, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.total }}",
+              "operation": "larger",
+              "value2": 0
+            }
+          ]
+        }
+      },
+      "name": "Has Active Stores?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const stores = $input.first().json.stores || [];\nreturn stores.map((store) => ({ json: store }));"
+      },
+      "name": "Split Stores Array",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [700, 300],
+      "notes": "Converte array stores em items individuais"
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "name": "Split By Store",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [900, 300],
+      "notes": "Processar uma loja por vez"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "name": "platform", "value": "={{ $json.platform }}", "type": "string" },
+            { "name": "store_identifier", "value": "={{ $json.store_identifier }}", "type": "string" },
+            { "name": "order_count", "value": "={{ $json.current_week.order_count }}", "type": "number" },
+            { "name": "total_revenue", "value": "={{ $json.current_week.total_revenue }}", "type": "number" },
+            { "name": "avg_order_value", "value": "={{ $json.current_week.avg_order_value }}", "type": "number" },
+            { "name": "unique_customers", "value": "={{ $json.current_week.unique_customers }}", "type": "number" },
+            { "name": "prev_revenue", "value": "={{ $json.previous_week.total_revenue }}", "type": "number" },
+            { "name": "change_pct", "value": "={{ $json.revenue_change_pct }}", "type": "number" },
+            { "name": "top_channel", "value": "={{ $json.top_channels[0]?.channel || 'N/A' }}", "type": "string" },
+            { "name": "top_campaign", "value": "={{ $json.top_campaign || 'N/A' }}", "type": "string" },
+            { "name": "period_start", "value": "={{ $json.period.start }}", "type": "string" },
+            { "name": "period_end", "value": "={{ $json.period.end }}", "type": "string" }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Extract Store Item",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1100, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{$env.SUPABASE_URL}}/rest/v1/user_stores",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{$env.SUPABASE_SERVICE_KEY}}" },
+            { "name": "Authorization", "value": "=Bearer {{$env.SUPABASE_SERVICE_KEY}}" }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "shop_domain", "value": "=eq.{{ $('Extract Store Item').item.json.store_identifier }}" },
+            { "name": "select", "value": "user_id,shop_domain,platform" },
+            { "name": "limit", "value": "1" }
+          ]
+        },
+        "options": { "timeout": 15000 }
+      },
+      "name": "Get Store Owner Email",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1300, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.length }}",
+              "operation": "larger",
+              "value2": 0
+            }
+          ]
+        }
+      },
+      "name": "Has Owner?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1500, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{$env.SUPABASE_URL}}/auth/v1/admin/users/{{ $json[0].user_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{$env.SUPABASE_SERVICE_KEY}}" },
+            { "name": "Authorization", "value": "=Bearer {{$env.SUPABASE_SERVICE_KEY}}" }
+          ]
+        },
+        "options": { "timeout": 15000 }
+      },
+      "name": "Get Owner Email",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1700, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Copiar de docs/n8n/weekly-report-email.html\nconst data = $('Extract Store Item').item.json;\n\nconst formatCurrency = (v) =>\n  'R$ ' + parseFloat(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });\n\nconst changeArrow = data.change_pct === null ? '' :\n  data.change_pct >= 0\n    ? `<span style=\"color:#1D9E75\">▲ ${data.change_pct}%</span>`\n    : `<span style=\"color:#E24B4A\">▼ ${Math.abs(data.change_pct)}%</span>`;\n\nconst channelLabel = {\n  google_ads: 'Google Ads',\n  meta_ads: 'Meta Ads',\n  email: 'E-mail',\n  organic: 'Orgânico',\n  direct: 'Direto',\n}[data.top_channel] || data.top_channel;\n\nconst vertexUrl = $env.VERTEX_URL || 'https://vertex-alpha-sooty.vercel.app';\n\nconst html = `<!DOCTYPE html><html><head><meta charset=\"utf-8\"></head><body style=\"margin:0;padding:0;background:#f4f4f4;font-family:Arial,sans-serif\"><table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#f4f4f4;padding:32px 0\"><tr><td align=\"center\"><table width=\"560\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#ffffff;border-radius:12px;overflow:hidden\"><tr><td style=\"background:#020205;padding:28px 36px\"><p style=\"margin:0;color:#B87333;font-size:11px;letter-spacing:.12em;text-transform:uppercase\">VERTEX · Revenue Intelligence</p><h1 style=\"margin:8px 0 0;color:#E4EDFF;font-size:22px;font-weight:600\">Relatório semanal</h1><p style=\"margin:4px 0 0;color:#888;font-size:13px\">${data.period_start} – ${data.period_end}</p></td></tr><tr><td style=\"padding:24px 36px 8px\"><p style=\"margin:0;font-size:11px;color:#888;text-transform:uppercase\">Loja</p><p style=\"margin:4px 0 0;font-size:15px;font-weight:600\">${data.store_identifier}</p></td></tr><tr><td style=\"padding:8px 36px 24px\"><p style=\"margin:0;font-size:11px;color:#888;text-transform:uppercase\">Receita da semana</p><p style=\"margin:8px 0;font-size:28px;font-weight:700\">${formatCurrency(data.total_revenue)}</p><p style=\"margin:0;font-size:13px\">${changeArrow} vs semana anterior</p><p style=\"margin:16px 0 0;font-size:11px;color:#888;text-transform:uppercase\">Ordens</p><p style=\"margin:4px 0;font-size:22px;font-weight:700\">${data.order_count}</p><p style=\"margin:0;color:#888\">ticket médio ${formatCurrency(data.avg_order_value)}</p></td></tr><tr><td style=\"padding:0 36px 32px;text-align:center\"><a href=\"${vertexUrl}/dashboard\" style=\"display:inline-block;background:#B87333;color:#020205;text-decoration:none;font-weight:700;padding:14px 32px;border-radius:8px\">Ver dashboard →</a></td></tr></table></td></tr></table></body></html>`;\n\nreturn { html };"
+      },
+      "name": "Build Email HTML",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1900, 300],
+      "notes": "Template completo em docs/n8n/weekly-report-email.html"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.resend.com/emails",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{$env.RESEND_API_KEY}}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "={{ JSON.stringify({ from: $env.RESEND_FROM, to: [$('Get Owner Email').item.json.email], subject: 'Seu relatório semanal VERTEX — ' + $('Extract Store Item').item.json.period_start + ' a ' + $('Extract Store Item').item.json.period_end, html: $('Build Email HTML').item.json.html }) }}"
+      },
+      "name": "Send Email via Resend",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2100, 300]
+    }
+  ],
+  "connections": {
+    "Schedule": {
+      "main": [[{ "node": "Get All Active Stores", "type": "main", "index": 0 }]]
+    },
+    "Get All Active Stores": {
+      "main": [[{ "node": "Has Active Stores?", "type": "main", "index": 0 }]]
+    },
+    "Has Active Stores?": {
+      "main": [[{ "node": "Split Stores Array", "type": "main", "index": 0 }]]
+    },
+    "Split Stores Array": {
+      "main": [[{ "node": "Split By Store", "type": "main", "index": 0 }]]
+    },
+    "Split By Store": {
+      "main": [[{ "node": "Extract Store Item", "type": "main", "index": 0 }]]
+    },
+    "Extract Store Item": {
+      "main": [[{ "node": "Get Store Owner Email", "type": "main", "index": 0 }]]
+    },
+    "Get Store Owner Email": {
+      "main": [[{ "node": "Has Owner?", "type": "main", "index": 0 }]]
+    },
+    "Has Owner?": {
+      "main": [[{ "node": "Get Owner Email", "type": "main", "index": 0 }]]
+    },
+    "Get Owner Email": {
+      "main": [[{ "node": "Build Email HTML", "type": "main", "index": 0 }]]
+    },
+    "Build Email HTML": {
+      "main": [[{ "node": "Send Email via Resend", "type": "main", "index": 0 }]]
+    },
+    "Send Email via Resend": {
+      "main": [[{ "node": "Split By Store", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "_prerequisites": [
+    "INTELLIGENCE_API_URL = https://intelligence.ehos.com.br",
+    "INTELLIGENCE_ADMIN_KEY = <ADMIN_API_KEY>",
+    "SUPABASE_URL = https://hpnopldrskzlhrfgihzf.supabase.co",
+    "SUPABASE_SERVICE_KEY = <service_role_key>",
+    "RESEND_API_KEY = re_xxx",
+    "RESEND_FROM = noreply@ehos.com.br",
+    "VERTEX_URL = https://vertex-alpha-sooty.vercel.app"
+  ]
+}

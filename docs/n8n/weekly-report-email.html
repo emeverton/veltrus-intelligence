@@ -1,0 +1,134 @@
+<!--
+  Nó Code no n8n — "Build Email HTML"
+  Input: item do nó Extract Store Item
+  Output: { html: string }
+
+  Colar o JavaScript abaixo no nó Code (modo "Run Once for Each Item"):
+-->
+<script type="text/template">
+// Nó Code no n8n — Function "Build Email HTML"
+// Input: item do nó Extract Store Item
+// Output: { html: string }
+
+const data = $input.item.json;
+
+const formatCurrency = (v) =>
+  'R$ ' + parseFloat(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+const changeArrow = data.change_pct === null ? '' :
+  data.change_pct >= 0
+    ? `<span style="color:#1D9E75">▲ ${data.change_pct}%</span>`
+    : `<span style="color:#E24B4A">▼ ${Math.abs(data.change_pct)}%</span>`;
+
+const channelLabel = {
+  google_ads: 'Google Ads',
+  meta_ads: 'Meta Ads',
+  email: 'E-mail',
+  organic: 'Orgânico',
+  direct: 'Direto',
+}[data.top_channel] || data.top_channel;
+
+const html = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head>
+<body style="margin:0;padding:0;background:#f4f4f4;font-family:Arial,sans-serif">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f4;padding:32px 0">
+    <tr><td align="center">
+      <table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden">
+
+        <!-- Header -->
+        <tr>
+          <td style="background:#020205;padding:28px 36px">
+            <p style="margin:0;color:#B87333;font-size:11px;letter-spacing:.12em;text-transform:uppercase">VERTEX · Revenue Intelligence</p>
+            <h1 style="margin:8px 0 0;color:#E4EDFF;font-size:22px;font-weight:600">Relatório semanal</h1>
+            <p style="margin:4px 0 0;color:#888;font-size:13px">${data.period_start} – ${data.period_end}</p>
+          </td>
+        </tr>
+
+        <!-- Store info -->
+        <tr>
+          <td style="padding:24px 36px 8px">
+            <p style="margin:0;font-size:11px;color:#888;letter-spacing:.08em;text-transform:uppercase">Loja</p>
+            <p style="margin:4px 0 0;font-size:15px;color:#1a1a1a;font-weight:600">${data.store_identifier}</p>
+          </td>
+        </tr>
+
+        <!-- Main metric: Revenue -->
+        <tr>
+          <td style="padding:8px 36px 24px">
+            <table width="100%" cellpadding="0" cellspacing="0">
+              <tr>
+                <td style="background:#f8f8f8;border-radius:8px;padding:20px 24px;width:48%">
+                  <p style="margin:0;font-size:11px;color:#888;letter-spacing:.08em;text-transform:uppercase">Receita da semana</p>
+                  <p style="margin:8px 0 4px;font-size:28px;font-weight:700;color:#020205">${formatCurrency(data.total_revenue)}</p>
+                  <p style="margin:0;font-size:13px">${changeArrow} vs semana anterior</p>
+                </td>
+                <td style="width:4%"></td>
+                <td style="background:#f8f8f8;border-radius:8px;padding:20px 24px;width:48%">
+                  <p style="margin:0;font-size:11px;color:#888;letter-spacing:.08em;text-transform:uppercase">Ordens</p>
+                  <p style="margin:8px 0 4px;font-size:28px;font-weight:700;color:#020205">${data.order_count}</p>
+                  <p style="margin:0;font-size:13px;color:#888">ticket médio ${formatCurrency(data.avg_order_value)}</p>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- Secondary metrics -->
+        <tr>
+          <td style="padding:0 36px 24px">
+            <table width="100%" cellpadding="0" cellspacing="0">
+              <tr>
+                <td style="background:#f8f8f8;border-radius:8px;padding:16px 20px;width:48%">
+                  <p style="margin:0;font-size:11px;color:#888;letter-spacing:.08em;text-transform:uppercase">Top canal</p>
+                  <p style="margin:6px 0 0;font-size:16px;font-weight:600;color:#020205">${channelLabel}</p>
+                </td>
+                <td style="width:4%"></td>
+                <td style="background:#f8f8f8;border-radius:8px;padding:16px 20px;width:48%">
+                  <p style="margin:0;font-size:11px;color:#888;letter-spacing:.08em;text-transform:uppercase">Clientes únicos</p>
+                  <p style="margin:6px 0 0;font-size:16px;font-weight:600;color:#020205">${data.unique_customers}</p>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        ${data.top_campaign !== 'N/A' ? `
+        <!-- Top campaign -->
+        <tr>
+          <td style="padding:0 36px 24px">
+            <div style="background:#f0f9f5;border-left:3px solid #1D9E75;border-radius:0 8px 8px 0;padding:14px 20px">
+              <p style="margin:0;font-size:11px;color:#888;letter-spacing:.08em;text-transform:uppercase">Top campanha</p>
+              <p style="margin:6px 0 0;font-size:14px;font-weight:600;color:#020205">${data.top_campaign}</p>
+            </div>
+          </td>
+        </tr>` : ''}
+
+        <!-- CTA -->
+        <tr>
+          <td style="padding:0 36px 32px;text-align:center">
+            <a href="${$env.VERTEX_URL}/dashboard" style="display:inline-block;background:#B87333;color:#020205;text-decoration:none;font-weight:700;font-size:14px;padding:14px 32px;border-radius:8px;letter-spacing:.04em">
+              Ver dashboard completo →
+            </a>
+          </td>
+        </tr>
+
+        <!-- Footer -->
+        <tr>
+          <td style="background:#f8f8f8;padding:20px 36px;border-top:1px solid #eee">
+            <p style="margin:0;font-size:12px;color:#aaa;text-align:center">
+              VERTEX by Veltrus · Revenue Infrastructure Engineering<br>
+              <a href="${$env.VERTEX_URL}/dashboard/settings" style="color:#aaa">Gerenciar notificações</a>
+            </p>
+          </td>
+        </tr>
+
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+
+return { html };
+</script>
