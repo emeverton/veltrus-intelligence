@@ -46,6 +46,7 @@ from src.webhooks.moovin_parser import (
     extract_moovin_store_id,
 )
 from src.webhooks.moovin_handler import process_moovin_order
+from src.webhooks.resend_events_handler import handle_resend_event
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -580,3 +581,18 @@ async def moovin_webhook(request: Request):
     logger.info("Moovin webhook: store=%s, order=%s", store_id, order_id)
     asyncio.create_task(process_moovin_order(payload, store))
     return {"received": True, "processed": True, "order_id": order_id}
+
+
+@router.post("/resend/email-events")
+async def resend_email_events(request: Request):
+    """
+    Webhook Resend para open/click/bounce/unsubscribe.
+    Configurar em resend.com → Webhooks → Add endpoint.
+    """
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+
+    asyncio.create_task(handle_resend_event(payload))
+    return {"received": True}

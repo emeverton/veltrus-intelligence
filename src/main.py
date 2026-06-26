@@ -26,6 +26,7 @@ from src.api.v1 import (
     webhooks,
 )
 from src.api.v1.reports import router as reports_router
+from src.api.v1.kairos import router as kairos_router
 from src.agents.worker import run_agent_worker
 from src.attribution.worker import run_worker
 from src.config import settings
@@ -118,3 +119,4 @@ app.include_router(
 )
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
 app.include_router(reports_router)
+app.include_router(kairos_router)

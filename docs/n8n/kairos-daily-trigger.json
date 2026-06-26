@@ -1,0 +1,102 @@
+{
+  "name": "KAIROS — Trigger diário 9h BRT",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 12 * * 1-6"
+            }
+          ]
+        }
+      },
+      "id": "kairos-schedule",
+      "name": "Schedule 9h BRT",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [100, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.INTELLIGENCE_API_URL}}/api/v1/kairos/run",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "X-Admin-Key", "value": "={{$env.INTELLIGENCE_ADMIN_KEY}}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"trigger_type\":\"scheduled\",\"segment\":\"both\",\"max_per_segment\":25}"
+      },
+      "id": "kairos-run",
+      "name": "Run KAIROS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [300, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.INTELLIGENCE_API_URL}}/api/v1/kairos/escalate-wa",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "X-Admin-Key", "value": "={{$env.INTELLIGENCE_ADMIN_KEY}}" }
+          ]
+        }
+      },
+      "id": "kairos-wa",
+      "name": "Escalação WA (48h check)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "result",
+              "name": "result",
+              "value": "={{ JSON.stringify($json) }}",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "kairos-log",
+      "name": "Log resultado",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [700, 300]
+    }
+  ],
+  "connections": {
+    "Schedule 9h BRT": {
+      "main": [[{ "node": "Run KAIROS", "type": "main", "index": 0 }]]
+    },
+    "Run KAIROS": {
+      "main": [[{ "node": "Escalação WA (48h check)", "type": "main", "index": 0 }]]
+    },
+    "Escalação WA (48h check)": {
+      "main": [[{ "node": "Log resultado", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "env_vars_required": [
+      "INTELLIGENCE_API_URL = https://intelligence.ehos.com.br",
+      "INTELLIGENCE_ADMIN_KEY = <ADMIN_API_KEY>"
+    ],
+    "resend_webhook": "https://intelligence.ehos.com.br/webhooks/resend/email-events",
+    "cron_note": "12:00 UTC = 09:00 BRT, seg-sab"
+  }
+}
