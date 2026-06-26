@@ -80,7 +80,7 @@ async def test_resend_webhook_accepts_payload():
     with patch(
         "src.api.v1.webhooks.handle_resend_event",
         AsyncMock(return_value=None),
-    ):
+    ), patch("src.webhooks.resend_events_handler.RESEND_WEBHOOK_SECRET", ""):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             response = await client.post(
                 "/webhooks/resend/email-events",
@@ -88,3 +88,16 @@ async def test_resend_webhook_accepts_payload():
             )
     assert response.status_code == 200
     assert response.json()["received"] is True
+
+
+@pytest.mark.asyncio
+async def test_resend_webhook_rejects_invalid_signature():
+    with patch("src.webhooks.resend_events_handler.RESEND_WEBHOOK_SECRET", "whsec_test_secret"):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.post(
+                "/webhooks/resend/email-events",
+                content=b'{"type":"email.opened","data":{"email_id":"msg_123"}}',
+                headers={"Content-Type": "application/json"},
+            )
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid webhook signature"
