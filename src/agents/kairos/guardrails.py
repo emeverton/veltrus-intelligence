@@ -139,18 +139,18 @@ async def check_profile_eligible(
                 SELECT
                     COALESCE(
                         (SELECT email FROM ({ORDER_UNION}) oc
-                         WHERE oc.profile_id = :pid::uuid AND oc.email IS NOT NULL
+                         WHERE oc.profile_id = CAST(:pid AS uuid) AND oc.email IS NOT NULL
                          ORDER BY oc.created_at DESC LIMIT 1),
                         (SELECT event_data->>'email' FROM identity_events ie
-                         WHERE ie.profile_id = :pid::uuid AND event_data->>'email' IS NOT NULL
+                         WHERE ie.profile_id = CAST(:pid AS uuid) AND event_data->>'email' IS NOT NULL
                          ORDER BY ie.occurred_at DESC LIMIT 1)
                     ) AS email,
                     COALESCE(
                         (SELECT phone FROM ({ORDER_UNION}) oc
-                         WHERE oc.profile_id = :pid::uuid AND oc.phone IS NOT NULL
+                         WHERE oc.profile_id = CAST(:pid AS uuid) AND oc.phone IS NOT NULL
                          ORDER BY oc.created_at DESC LIMIT 1),
                         (SELECT event_data->>'phone' FROM identity_events ie
-                         WHERE ie.profile_id = :pid::uuid AND event_data->>'phone' IS NOT NULL
+                         WHERE ie.profile_id = CAST(:pid AS uuid) AND event_data->>'phone' IS NOT NULL
                          ORDER BY ie.occurred_at DESC LIMIT 1)
                     ) AS phone
             """),
