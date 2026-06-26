@@ -5,13 +5,28 @@ Atualiza status das sequências KAIROS.
 from __future__ import annotations
 
 import logging
+import os
 import uuid as uuid_lib
 
 from sqlalchemy import text as sql_text
+from svix.webhooks import Webhook, WebhookVerificationError
 
 from src.database import AsyncSessionFactory
 
 logger = logging.getLogger(__name__)
+
+RESEND_WEBHOOK_SECRET = os.getenv("RESEND_WEBHOOK_SECRET", "")
+
+
+def verify_resend_signature(raw_body: bytes, headers: dict) -> bool:
+    if not RESEND_WEBHOOK_SECRET:
+        return True  # dev mode
+    try:
+        wh = Webhook(RESEND_WEBHOOK_SECRET)
+        wh.verify(raw_body, headers)
+        return True
+    except WebhookVerificationError:
+        return False
 
 
 async def handle_resend_event(event: dict) -> None:

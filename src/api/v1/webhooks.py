@@ -46,7 +46,7 @@ from src.webhooks.moovin_parser import (
     extract_moovin_store_id,
 )
 from src.webhooks.moovin_handler import process_moovin_order
-from src.webhooks.resend_events_handler import handle_resend_event
+from src.webhooks.resend_events_handler import handle_resend_event, verify_resend_signature
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -589,8 +589,13 @@ async def resend_email_events(request: Request):
     Webhook Resend para open/click/bounce/unsubscribe.
     Configurar em resend.com → Webhooks → Add endpoint.
     """
+    raw_body = await request.body()
+
+    if not verify_resend_signature(raw_body, dict(request.headers)):
+        raise HTTPException(status_code=401, detail="Invalid webhook signature")
+
     try:
-        payload = await request.json()
+        payload = json.loads(raw_body)
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid JSON")
 
